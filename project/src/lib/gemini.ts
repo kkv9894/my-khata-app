@@ -1,0 +1,30 @@
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+
+export async function analyzeTransaction(text: string) {
+  const systemPrompt = `
+    Extract transaction data from this voice note: "${text}"
+    Respond ONLY with JSON: {"amount": number, "type": "income" | "expense", "description": "string"}
+  `;
+
+  try {
+    const response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: systemPrompt }] }]
+      })
+    });
+
+    const data = await response.json();
+    if (data.candidates && data.candidates[0].content.parts[0].text) {
+      const rawResult = data.candidates[0].content.parts[0].text;
+      const cleanJson = rawResult.replace(/```json|```/g, "").trim();
+      return JSON.parse(cleanJson);
+    }
+    return null;
+  } catch (error) {
+    console.error("Gemini Error:", error);
+    return null;
+  }
+}
