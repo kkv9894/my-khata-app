@@ -17,14 +17,35 @@ function AppContent() {
     localStorage.setItem('appLanguage', language);
   }, [language]);
 
+  // --- 1. HANDLE LOADING STATE ---
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-black"></div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-black"></div>
+          <p className="text-xs font-black uppercase tracking-widest text-gray-400">Verifying Session...</p>
+        </div>
       </div>
     );
   }
 
+  // --- 2. SHOW AUTH (LOGIN/SIGNUP) IF NO USER ---
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-white">
+        {/* Simple Header for Login Page */}
+        <div className="p-6 flex items-center gap-2">
+          <div className="bg-black p-2 rounded-xl shadow-lg">
+            <Wallet size={20} color="white" /> 
+          </div>
+          <span className="font-black text-xl tracking-tighter text-black">My Khata</span>
+        </div>
+        <Auth language={language} />
+      </div>
+    );
+  }
+
+  // --- 3. SHOW MAIN APP (HOME) IF USER IS LOGGED IN ---
   return (
     <div className="min-h-screen bg-white">
       {/* --- BRANDED HEADER --- */}
@@ -38,7 +59,7 @@ function AppContent() {
           <span className="font-black text-xl tracking-tighter text-black">My Khata</span>
         </div>
 
-        {/* ACTIONS SECTION (Language + Log Out) */}
+        {/* ACTIONS SECTION */}
         <div className="flex items-center gap-3">
           <select 
             value={language} 
@@ -53,39 +74,32 @@ function AppContent() {
             <option value="ml">ML</option>
           </select>
 
-          {user && (
-            <button 
-              onClick={() => signOut()} 
-              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-              title="Logout"
-            >
-              <LogOut size={18} />
-            </button>
-          )}
+          <button 
+            onClick={() => signOut()} 
+            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+          >
+            <LogOut size={18} />
+          </button>
         </div>
       </div>
 
       <div className="pt-20">
-        {user ? (
-          <div className="animate-in fade-in duration-700">
-            {/* USER PROFILE SECTION */}
-            <div className="px-6 py-4 flex items-center gap-3 bg-gray-50 mx-4 rounded-2xl mb-2">
-              <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white">
-                <User size={20} />
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Logged in as</p>
-                <h2 className="text-sm font-black text-gray-900">
-                  {user.user_metadata?.full_name || user.email?.split('@')[0]}
-                </h2>
-              </div>
+        <div className="animate-in fade-in duration-700">
+          {/* USER PROFILE SECTION */}
+          <div className="px-6 py-4 flex items-center gap-3 bg-gray-50 mx-4 rounded-2xl mb-2">
+            <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white">
+              <User size={20} />
             </div>
-            
-            <Home language={language} />
+            <div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Logged in as</p>
+              <h2 className="text-sm font-black text-gray-900">
+                {user.user_metadata?.full_name || user.email?.split('@')[0]}
+              </h2>
+            </div>
           </div>
-        ) : (
-          <Auth language={language} />
-        )}
+          
+          <Home language={language} />
+        </div>
       </div>
     </div>
   );
