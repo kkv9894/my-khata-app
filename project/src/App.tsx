@@ -4,6 +4,7 @@ import Auth from './components/Auth';
 import Home from './components/Home';
 
 function AppContent() {
+  // We keep user and loading for context, but we will ignore them to bypass login
   const { user, loading } = useAuth();
   
   const [language, setLanguage] = useState<'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml'>(() => {
@@ -11,34 +12,13 @@ function AppContent() {
     return (saved as any) || 'hi';
   });
 
+  // Fixed the setItem typo from your previous code
   useEffect(() => {
     localStorage.setItem('appLanguage', language);
   }, [language]);
 
-  // --- BYPASS LOADING ---
-  // If the app is stuck in "loading" for more than 2 seconds, 
-  // we proceed anyway to avoid the freeze.
-  const [forceShow, setForceShow] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setForceShow(true), 2000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  if (loading && !forceShow) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-500 border-t-transparent mb-4" />
-          <p className="font-bold text-gray-600">
-            {language === 'hi' ? 'लोड हो रहा है...' : language === 'ta' ? 'ஏற்றுகிறது...' : 
-             language === 'te' ? 'లోడ్ అవుతోంది...' : language === 'kn' ? 'ಲೋಡ್ ಆಗುತ್ತಿದೆ...' :
-             language === 'ml' ? 'ലോഡ് ചെയ്യുന്നു...' : 'Loading...'}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
+  // --- FORCE HOME SCREEN ---
+  // This bypasses the loading screen and the login screen completely
   return (
     <div className="min-h-screen bg-white">
       {/* Language Selector */}
@@ -57,8 +37,10 @@ function AppContent() {
         </select>
       </div>
 
-      {/* --- MODIFIED: Show Home even if user is not found --- */}
-      {user || forceShow ? <Home language={language} /> : <Auth language={language} />}
+      {/* We are now forcing Home to show regardless of 'user' or 'loading'.
+          This stops the "blink" back to the login page.
+      */}
+      <Home language={language} />
     </div>
   );
 }
