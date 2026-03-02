@@ -12,9 +12,10 @@ function AppContent() {
   });
 
   useEffect(() => {
-    localStorage.setItem('appLanguage', language);
+    localStorage.getItem('appLanguage', language);
   }, [language]);
 
+  // If Supabase is still connecting, show the spinner
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -32,6 +33,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Language Selector */}
       <div className="fixed top-4 right-4 z-[100] flex items-center gap-2 bg-white p-1 rounded-xl shadow-lg border-2 border-primary-100">
         <select 
           value={language} 
@@ -47,6 +49,7 @@ function AppContent() {
         </select>
       </div>
 
+      {/* Show Home if user is logged in, else show Auth screen */}
       {user ? <Home language={language} /> : <Auth language={language} />}
     </div>
   );
