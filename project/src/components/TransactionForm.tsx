@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { X, Save, TrendingUp, TrendingDown } from 'lucide-react';
+import { X, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
 
 const formTranslations: any = {
   en: { title: "New Transaction", expense: "Expense", income: "Income", amount: "Amount (₹)", desc: "Description", placeholder: "Details...", save: "Save" },
@@ -9,11 +8,10 @@ const formTranslations: any = {
   ta: { title: "புதிய பரிவர்த்தனை", expense: "செலவு", income: "வருமானம்", amount: "தொகை (₹)", desc: "விளக்கம்", placeholder: "விவரம்...", save: "சேமி" },
   te: { title: "కొత్త లావాదేవీ", expense: "ఖర్చు", income: "ఆదాయం", amount: "మొత్తం (₹)", desc: "వివరణ", placeholder: "వివరాలు...", save: "సేవ్" },
   kn: { title: "ಹೊಸ ವಹಿವಾಟು", expense: "ಖರ್ಚು", income: "ಆದಾಯ", amount: "ಮೊತ್ತ (₹)", desc: "ವಿವರಣೆ", placeholder: "ವಿವರಗಳು...", save: "ಉಳಿಸಿ" },
-  ml: { title: "പുതിയ ഇടപാട്", expense: "ചെലവ്", income: "വരുമാനം", amount: "തുക (₹)", desc: "വിവരണം", placeholder: "വിവരങ്ങൾ...", save: "സേവ് ചെയ്യുക" }
+  ml: { title: "പുതിയ ഇടപാട്", expense: "ചെലവ്", income: "വരമാനം", amount: "തുക (₹)", desc: "വിവരണം", placeholder: "വിവരങ്ങൾ...", save: "സേവ് ചെയ്യുക" }
 };
 
 export default function TransactionForm({ initialData, onClose, language = 'hi' }: any) {
-  const { user } = useAuth();
   const [amount, setAmount] = useState(initialData.amount || '');
   const [description, setDescription] = useState(initialData.description || '');
   const [type, setType] = useState(initialData.type || 'expense');
@@ -21,15 +19,23 @@ export default function TransactionForm({ initialData, onClose, language = 'hi' 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-    const { error } = await supabase.from('transactions').insert({
-      user_id: user.id,
-      amount: parseFloat(amount),
-      description: description.trim(),
-      type,
-      transaction_date: new Date().toISOString().split('T')[0],
-    });
-    if (!error) onClose();
+    
+    // We send only the 3 columns your table has
+    const { error } = await supabase.from('transactions').insert([
+      { 
+        amount: parseFloat(amount), 
+        description: description.trim(), 
+        type: type 
+      }
+    ]);
+
+    if (error) {
+      console.error("Supabase Error:", error.message);
+      alert("Database Error: " + error.message);
+    } else {
+      onClose();
+      window.location.reload(); // Refresh to show new data
+    }
   };
 
   return (
@@ -52,7 +58,7 @@ export default function TransactionForm({ initialData, onClose, language = 'hi' 
             <label className="block text-xs font-black text-gray-400 uppercase mb-2">{t.desc}</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl min-h-[100px]" placeholder={t.placeholder} required />
           </div>
-          <button type="submit" className="w-full bg-gradient-to-r from-primary-600 to-secondary-600 text-white font-black py-5 rounded-2xl shadow-xl hover:shadow-primary-200 transform active:scale-95 transition-all text-xl">
+          <button type="submit" className="w-full bg-black text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition-all text-xl">
              <Save className="inline w-6 h-6 mr-2" />{t.save}
           </button>
         </form>
