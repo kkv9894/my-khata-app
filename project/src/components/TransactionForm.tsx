@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 const formTranslations: any = {
   en: { title: "New Transaction", expense: "Expense", income: "Income", amount: "Amount (₹)", desc: "Description", placeholder: "Details...", save: "Save" },
@@ -11,21 +12,29 @@ const formTranslations: any = {
   ml: { title: "പുതിയ ഇടപാട്", expense: "ചെലവ്", income: "വരമാനം", amount: "തുക (₹)", desc: "വിവരണം", placeholder: "വിവരങ്ങൾ...", save: "സേവ് ചെയ്യുക" }
 };
 
-export default function TransactionForm({ initialData, onClose, language = 'hi' }: any) {
+export default function TransactionForm({ initialData, onClose, language = 'en' }: any) {
+  const { user } = useAuth(); // Get the logged-in user
   const [amount, setAmount] = useState(initialData.amount || '');
   const [description, setDescription] = useState(initialData.description || '');
   const [type, setType] = useState(initialData.type || 'expense');
-  const t = formTranslations[language] || formTranslations.hi;
+  
+  // Default to English ('en') if language is not passed
+  const t = formTranslations[language] || formTranslations.en;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // We send only the 3 columns your table has
+    if (!user) {
+      alert("You must be logged in to save data.");
+      return;
+    }
+
     const { error } = await supabase.from('transactions').insert([
       { 
         amount: parseFloat(amount), 
         description: description.trim(), 
-        type: type 
+        type: type,
+        user_id: user.id // IMPORTANT: Links the data to the logged-in person
       }
     ]);
 
@@ -34,7 +43,7 @@ export default function TransactionForm({ initialData, onClose, language = 'hi' 
       alert("Database Error: " + error.message);
     } else {
       onClose();
-      window.location.reload(); // Refresh to show new data
+      window.location.reload(); 
     }
   };
 
