@@ -1,15 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-// --- UPDATE THESE TWO LINES WITH YOUR NEW PROJECT KEYS ---
-const supabaseUrl = https://knvwywragxiaignvdgmq.supabase.co; 
-const supabaseAnonKey = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtudnd5d3JhZ3hpYWlnbnZkZ21xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NzYwMTUsImV4cCI6MjA4ODA1MjAxNX0.RU5rSxYz3E5TQ9pdem56EnC1fIF1bVwNk78BYnuLoU8;
+// --- FIXED: Added quotes around the URL and Key ---
+const supabaseUrl = 'https://knvwywragxiaignvdgmq.supabase.co'; 
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtudnd5d3JhZ3hpYWlnbnZkZ21xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NzYwMTUsImV4cCI6MjA4ODA1MjAxNX0.RU5rSxYz3E5TQ9pdem56EnC1fIF1bVwNk78BYnuLoU8';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // --- DO NOT CHANGE THE TYPES BELOW (THEY KEEP THE APP RUNNING) ---
 export type Transaction = {
   id: string;
-  user_id?: string; // Made optional to match our simplified table
+  user_id?: string;
   category_id?: string | null;
   amount: number;
   type: 'income' | 'expense';
