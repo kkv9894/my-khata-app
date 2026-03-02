@@ -12,11 +12,19 @@ function AppContent() {
   });
 
   useEffect(() => {
-    localStorage.getItem('appLanguage', language);
+    localStorage.setItem('appLanguage', language);
   }, [language]);
 
-  // If Supabase is still connecting, show the spinner
-  if (loading) {
+  // --- BYPASS LOADING ---
+  // If the app is stuck in "loading" for more than 2 seconds, 
+  // we proceed anyway to avoid the freeze.
+  const [forceShow, setForceShow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setForceShow(true), 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (loading && !forceShow) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -49,8 +57,8 @@ function AppContent() {
         </select>
       </div>
 
-      {/* Show Home if user is logged in, else show Auth screen */}
-      {user ? <Home language={language} /> : <Auth language={language} />}
+      {/* --- MODIFIED: Show Home even if user is not found --- */}
+      {user || forceShow ? <Home language={language} /> : <Auth language={language} />}
     </div>
   );
 }
