@@ -7,7 +7,7 @@ export async function analyzeTransaction(text: string) {
     return null;
   }
 
-  // SYSTEM PROMPT: Optimized for Indian Business Context
+  // SYSTEM PROMPT: Optimized for Indian Business Context + Categories
   const systemPrompt = `
     You are the AI engine for "My Khata", a business ledger app in India.
     Your job is to extract financial data from this voice note: "${text}"
@@ -19,9 +19,10 @@ export async function analyzeTransaction(text: string) {
        - Use "income" if money is received, earned, or added.
        - Use "expense" if money is spent, paid, or given.
     4. DESCRIPTION: Create a very short, professional note in English.
+    5. CATEGORY: Assign one specific category from this list: Food, Fuel, Salary, Rent, Sales, Shopping, or General.
     
     OUTPUT: Respond ONLY with a valid JSON object. No markdown, no backticks, no extra text.
-    FORMAT: {"amount": number, "type": "income" | "expense", "description": "string"}
+    FORMAT: {"amount": number, "type": "income" | "expense", "description": "string", "category": "string"}
   `;
 
   try {
@@ -31,7 +32,7 @@ export async function analyzeTransaction(text: string) {
       body: JSON.stringify({
         contents: [{ parts: [{ text: systemPrompt }] }],
         generationConfig: {
-          temperature: 0.1, // Makes the AI precise and non-creative
+          temperature: 0.1, // High precision
           topP: 0.1,
           topK: 1,
         }
@@ -43,24 +44,24 @@ export async function analyzeTransaction(text: string) {
     if (data.candidates && data.candidates[0].content.parts[0].text) {
       const rawResult = data.candidates[0].content.parts[0].text;
       
-      // SAFETY GUARD: Find the first { and last } to isolate the JSON
+      // SAFETY GUARD: Extract only the JSON part to prevent parsing errors
       const startJson = rawResult.indexOf('{');
       const endJson = rawResult.lastIndexOf('}') + 1;
 
-      // If no brackets are found, the AI failed to format correctly
       if (startJson === -1 || endJson === 0) {
-        console.error("AI Response was not JSON:", rawResult);
+        console.error("AI Response was not formatted correctly:", rawResult);
         return null;
       }
 
       const cleanJson = rawResult.substring(startJson, endJson).trim();
       const parsed = JSON.parse(cleanJson);
       
-      // Final Clean-up before returning to the App
+      // Final data mapping for the database
       return {
         amount: Number(parsed.amount) || 0,
         type: parsed.type === 'income' ? 'income' : 'expense',
-        description: parsed.description || "Voice Entry"
+        description: parsed.description || "Voice Entry",
+        category: parsed.category || "General"
       };
     }
     
