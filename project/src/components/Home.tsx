@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Mic, TrendingUp, LayoutDashboard, Sparkles, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import useVoiceInput from '../hooks/useVoiceInput';
 import { analyzeTransaction } from '../lib/gemini';
 import TransactionForm from './TransactionForm';
@@ -8,15 +9,16 @@ import TransactionList from './TransactionList';
 import Dashboard from './Dashboard';
 
 const translations: any = {
-  en: { hold: "Hold to Speak", release: "Release to Save", ai: "AI is thinking...", history: "History", report: "Report" },
-  hi: { hold: "बोलने के लिए दबाकर रखें", release: "छोड़ें और सहेजें", ai: "AI सोच रहा है...", history: "इतिहास", report: "रिपोर्ट" },
-  ta: { hold: "பேச அழுத்திப் பிடிக்கவும்", release: "சேமிக்க விடுவிக்கவும்", ai: "AI யோசிக்கிறது...", history: "வரலாறு", report: "அறிக்கை" },
-  te: { hold: "మాట్లాడటానికి నొక్కి పట్టుకోండి", release: "సేవ్ చేయడానికి వదలండి", ai: "AI ఆలోచిస్తోంది...", history: "చరిత్ర", report: "నివేదిక" },
-  kn: { hold: "ಮಾತನಾಡಲು ಒತ್ತಿ ಹಿಡಿಯಿರಿ", release: "ಉಳಿಸಲು ಬಿಡಿ", ai: "AI ಯೋಚಿಸುತ್ತಿದೆ...", history: "ಇತಿಹಾಸ", report: "ವರದಿ" },
-  ml: { hold: "സംസാരിക്കാൻ അമർത്തിപ്പിടിക്കുക", release: "സേവ് ചെയ്യാൻ വിടുക", ai: "AI ചിന്തിക്കുന്നു...", history: "ചരിത്രം", report: "റിപ്പോർട്ട്" }
+  en: { hold: "Hold to Speak", release: "Release to Save", ai: "AI is thinking...", history: "History", report: "Report", saved: "recorded successfully" },
+  hi: { hold: "बोलने के लिए दबाकर रखें", release: "छोड़ें और सहेजें", ai: "AI सोच रहा है...", history: "इतिहास", report: "रिपोर्ट", saved: "सफलतापूर्वक दर्ज किया गया" },
+  ta: { hold: "பேச அழுத்திப் பிடிக்கவும்", release: "சேமிக்க விடுவிக்கவும்", ai: "AI யோசிக்கிறது...", history: "வரலாறு", report: "அறிக்கை", saved: "பதிவு செய்யப்பட்டது" },
+  te: { hold: "మాట్లాడటానికి నొక్కి పట్టుకోండి", release: "సేవ్ చేయడానికి వదలండి", ai: "AI ఆలోచిస్తోంది...", history: "చరిత్ర", report: "నివేదిక", saved: "విజయవంతంగా సేవ్ చేయబడింది" },
+  kn: { hold: "ಮಾತನಾಡಲು ಒತ್ತಿ ಹಿಡಿಯಿರಿ", release: "ಉಳಿಸಲು ಬಿಡಿ", ai: "AI ಯೋಚಿಸುತ್ತಿದೆ...", history: "ಇತಿಹಾಸ", report: "ವರದಿ", saved: "ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ" },
+  ml: { hold: "സംസാരിക്കാൻ അമർത്തിപ്പിടിക്കുക", release: "സേവ് ചെയ്യാൻ വിടുക", ai: "AI ചിന്തിക്കുന്നു...", history: "ചരിത്രം", report: "റിപ്പോർട്ട്", saved: "വിജയകരമായി സേവ് ചെയ്തു" }
 };
 
 export default function Home({ language = 'en' }: { language?: string }) {
+  const { user } = useAuth();
   const { isListening, transcript, startListening, stopListening } = useVoiceInput();
   
   const [showForm, setShowForm] = useState(false);
@@ -26,10 +28,18 @@ export default function Home({ language = 'en' }: { language?: string }) {
 
   const t = translations[language as any] || translations.en;
 
+  // 🔊 VOICE CONFIRMATION LOGIC
+  const speakFeedback = (text: string) => {
+    if (!window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    const langMap: any = { hi: 'hi-IN', en: 'en-IN', ta: 'ta-IN', te: 'te-IN', kn: 'kn-IN', ml: 'ml-IN' };
+    utterance.lang = langMap[language as any] || 'en-IN';
+    window.speechSynthesis.speak(utterance);
+  };
+
   const handleHoldStart = (e: any) => {
     e.preventDefault();
-    if (navigator.vibrate) navigator.vibrate(50);
-    // Map languages to high-accuracy voice recognition codes
+    if (navigator.vibrate) navigator.vibrate(50); // Initial feedback
     const voiceMap: any = { hi: 'hi-IN', en: 'en-IN', ta: 'ta-IN', te: 'te-IN', kn: 'kn-IN', ml: 'ml-IN' };
     startListening(voiceMap[language as any] || 'en-IN');
   };
@@ -42,39 +52,55 @@ export default function Home({ language = 'en' }: { language?: string }) {
       if (finalRecordedText.length > 0) {
         setIsAiLoading(true);
         try {
-          // 🧠 SEND TO GEMINI AI
+          // 🧠 1. ASK GEMINI TO ANALYZE
           const aiData = await analyzeTransaction(finalRecordedText);
           
-          if (aiData && (aiData.amount > 0 || aiData.description)) {
-            // ✅ AI SUCCESSFULLY PARSED THE VOICE DATA
-            setFormData({ 
-              amount: aiData.amount > 0 ? aiData.amount.toString() : '', 
-              description: aiData.description || finalRecordedText, 
-              type: aiData.type || 'expense'
-            });
+          if (aiData && aiData.amount > 0 && user) {
+            // 🚀 2. AUTO-SAVE TO DATABASE
+            const { error } = await supabase.from('transactions').insert([
+              { 
+                amount: aiData.amount, 
+                description: aiData.description, 
+                type: aiData.type,
+                user_id: user.id 
+              }
+            ]);
+
+            if (!error) {
+              // 📳 3. SUCCESS VIBRATION (Double Pulse)
+              if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+              // 🗣️ 4. VOICE FEEDBACK
+              const typeText = aiData.type === 'income' ? (language === 'en' ? 'Income' : 'आय') : (language === 'en' ? 'Expense' : 'खर्च');
+              speakFeedback(`${typeText} ${aiData.amount} ${t.saved}`);
+              
+              // Refresh data in background (silent refresh)
+              // No form needed, transaction is done!
+            } else {
+              throw new Error("Save failed");
+            }
           } else {
-            // ⚠️ AI FAILED: Put raw text in description
+            // ⚠️ 5. FALLBACK: If AI is confused, open manual form
             setFormData({ 
-              amount: '', 
-              description: finalRecordedText, 
-              type: 'expense' 
+              amount: aiData?.amount?.toString() || '', 
+              description: aiData?.description || finalRecordedText, 
+              type: aiData?.type || 'expense'
             });
+            setShowForm(true);
           }
         } catch (error) {
-          console.error("AI Analysis Failed:", error);
+          console.error("Auto-Save Error:", error);
+          // If auto-save fails, let the user do it manually
           setFormData({ amount: '', description: finalRecordedText, type: 'expense' });
+          setShowForm(true);
         }
-        
         setIsAiLoading(false);
-        setShowForm(true);
       }
     }
   };
 
   return (
     <div className="flex flex-col select-none touch-none h-[calc(100vh-80px)]">
-      
-      {/* --- CONTENT AREA --- */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'home' ? (
           <div className="h-full flex flex-col items-center justify-center px-6 relative overflow-hidden">
@@ -117,7 +143,7 @@ export default function Home({ language = 'en' }: { language?: string }) {
                   onTouchStart={handleHoldStart}
                   onTouchEnd={handleHoldEnd}
                   className={`relative w-72 h-72 rounded-full flex items-center justify-center transition-all duration-300 shadow-[0_20px_60px_rgba(0,0,0,0.15)] z-10 ${
-                    isListening ? 'bg-red-600 scale-110' : 'bg-black active:scale-90'
+                    isListening ? 'bg-red-600 scale-110 shadow-red-200' : 'bg-black active:scale-90'
                   }`}
                 >
                   <Mic size={80} color="white" strokeWidth={2.5} className={isListening ? 'scale-110' : ''} />
@@ -140,31 +166,18 @@ export default function Home({ language = 'en' }: { language?: string }) {
         )}
       </div>
 
-      {/* --- BOTTOM NAVIGATION --- */}
       <nav className="p-6 pb-10 bg-white border-t flex justify-around items-center shadow-[0_-10px_40px_rgba(0,0,0,0.03)] rounded-t-[2.5rem]">
-        <button 
-          onClick={() => setActiveTab('home')} 
-          className={`transition-all duration-300 p-3 rounded-2xl ${activeTab === 'home' ? 'bg-black text-white shadow-xl scale-110' : 'text-gray-300 hover:text-gray-500'}`}
-        >
+        <button onClick={() => setActiveTab('home')} className={`transition-all duration-300 p-3 rounded-2xl ${activeTab === 'home' ? 'bg-black text-white shadow-xl scale-110' : 'text-gray-300'}`}>
           <Mic size={24} strokeWidth={activeTab === 'home' ? 3 : 2} />
         </button>
-        
-        <button 
-          onClick={() => setActiveTab('transactions')} 
-          className={`transition-all duration-300 p-3 rounded-2xl ${activeTab === 'transactions' ? 'bg-black text-white shadow-xl scale-110' : 'text-gray-300 hover:text-gray-500'}`}
-        >
+        <button onClick={() => setActiveTab('transactions')} className={`transition-all duration-300 p-3 rounded-2xl ${activeTab === 'transactions' ? 'bg-black text-white shadow-xl scale-110' : 'text-gray-300'}`}>
           <TrendingUp size={24} strokeWidth={activeTab === 'transactions' ? 3 : 2} />
         </button>
-        
-        <button 
-          onClick={() => setActiveTab('dashboard')} 
-          className={`transition-all duration-300 p-3 rounded-2xl ${activeTab === 'dashboard' ? 'bg-black text-white shadow-xl scale-110' : 'text-gray-300 hover:text-gray-500'}`}
-        >
+        <button onClick={() => setActiveTab('dashboard')} className={`transition-all duration-300 p-3 rounded-2xl ${activeTab === 'dashboard' ? 'bg-black text-white shadow-xl scale-110' : 'text-gray-300'}`}>
           <LayoutDashboard size={24} strokeWidth={activeTab === 'dashboard' ? 3 : 2} />
         </button>
       </nav>
 
-      {/* AUTO-POPPING TRANSACTION FORM */}
       {showForm && (
         <TransactionForm 
           initialData={formData} 
@@ -172,6 +185,7 @@ export default function Home({ language = 'en' }: { language?: string }) {
           onClose={() => {
             setShowForm(false);
             setFormData({ amount: '', description: '', type: 'expense' });
+            window.location.reload(); // Refresh data if they used the manual form
           }} 
         />
       )}
