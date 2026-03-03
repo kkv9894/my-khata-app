@@ -29,6 +29,7 @@ export default function Home({ language = 'en' }: { language?: string }) {
   const handleHoldStart = (e: any) => {
     e.preventDefault();
     if (navigator.vibrate) navigator.vibrate(50);
+    // Map languages to high-accuracy voice recognition codes
     const voiceMap: any = { hi: 'hi-IN', en: 'en-IN', ta: 'ta-IN', te: 'te-IN', kn: 'kn-IN', ml: 'ml-IN' };
     startListening(voiceMap[language as any] || 'en-IN');
   };
@@ -40,15 +41,27 @@ export default function Home({ language = 'en' }: { language?: string }) {
 
       if (finalRecordedText.length > 0) {
         setIsAiLoading(true);
-        const aiData = await analyzeTransaction(finalRecordedText);
-        
-        if (aiData) {
-          setFormData({ 
-            amount: aiData.amount.toString(), 
-            description: aiData.description, 
-            type: aiData.type 
-          });
-        } else {
+        try {
+          // 🧠 SEND TO GEMINI AI
+          const aiData = await analyzeTransaction(finalRecordedText);
+          
+          if (aiData && (aiData.amount > 0 || aiData.description)) {
+            // ✅ AI SUCCESSFULLY PARSED THE VOICE DATA
+            setFormData({ 
+              amount: aiData.amount > 0 ? aiData.amount.toString() : '', 
+              description: aiData.description || finalRecordedText, 
+              type: aiData.type || 'expense'
+            });
+          } else {
+            // ⚠️ AI FAILED: Put raw text in description
+            setFormData({ 
+              amount: '', 
+              description: finalRecordedText, 
+              type: 'expense' 
+            });
+          }
+        } catch (error) {
+          console.error("AI Analysis Failed:", error);
           setFormData({ amount: '', description: finalRecordedText, type: 'expense' });
         }
         
@@ -61,46 +74,63 @@ export default function Home({ language = 'en' }: { language?: string }) {
   return (
     <div className="flex flex-col select-none touch-none h-[calc(100vh-80px)]">
       
-      {/* Tab Content */}
+      {/* --- CONTENT AREA --- */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'home' ? (
-          <div className="h-full flex flex-col items-center justify-center px-6 relative">
+          <div className="h-full flex flex-col items-center justify-center px-6 relative overflow-hidden">
             
-            {/* AI PROCESSING OVERLAY */}
+            {/* AI LOADING OVERLAY */}
             {isAiLoading && (
-              <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-[120] flex flex-col items-center justify-center">
+              <div className="absolute inset-0 bg-white/90 backdrop-blur-md z-[120] flex flex-col items-center justify-center">
                 <div className="relative">
-                  <Loader2 className="w-16 h-16 text-primary-600 animate-spin" />
-                  <Sparkles className="w-6 h-6 text-yellow-500 absolute -top-2 -right-2 animate-bounce" />
+                  <Loader2 className="w-20 h-20 text-black animate-spin" />
+                  <Sparkles className="w-8 h-8 text-yellow-500 absolute -top-2 -right-2 animate-bounce" />
                 </div>
-                <p className="mt-4 font-black text-primary-600 animate-pulse uppercase tracking-widest">{t.ai}</p>
+                <p className="mt-6 font-black text-black animate-pulse uppercase tracking-[0.3em] text-xs">
+                  {t.ai}
+                </p>
               </div>
             )}
 
-            {/* LIVE PREVIEW BUBBLE */}
-            <div className={`absolute top-10 left-6 right-6 p-6 rounded-3xl transition-all border-2 border-primary-100 ${
-              isListening ? 'bg-primary-50 opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
+            {/* LIVE VOICE TEXT PREVIEW */}
+            <div className={`absolute top-10 left-6 right-6 p-8 rounded-[2rem] border-2 transition-all duration-500 shadow-xl ${
+              isListening 
+                ? 'bg-black border-black scale-100 opacity-100' 
+                : 'bg-white border-gray-100 scale-95 opacity-0 pointer-events-none'
             }`}>
-              <p className="text-primary-400 text-[10px] font-black uppercase mb-1 tracking-widest">Listening...</p>
-              <p className="text-primary-900 text-xl font-bold leading-tight">{transcript || "..."}</p>
+              <p className="text-gray-400 text-[10px] font-black uppercase mb-2 tracking-[0.2em]">Live Transcript</p>
+              <p className="text-white text-2xl font-black leading-tight tracking-tight italic">
+                "{transcript || "..."}"
+              </p>
             </div>
 
-            <div className="flex flex-col items-center gap-6">
-              <button
-                onMouseDown={handleHoldStart}
-                onMouseUp={handleHoldEnd}
-                onMouseLeave={handleHoldEnd}
-                onTouchStart={handleHoldStart}
-                onTouchEnd={handleHoldEnd}
-                className={`relative w-64 h-64 rounded-full flex items-center justify-center transition-all duration-200 shadow-2xl z-10 ${
-                  isListening ? 'bg-red-500 scale-110' : 'bg-black active:scale-95'
-                }`}
-              >
-                <Mic size={64} color="white" className={isListening ? 'animate-pulse' : ''} />
-              </button>
-              <p className={`font-black text-sm uppercase tracking-widest ${isListening ? 'text-red-500' : 'text-gray-400'}`}>
-                {isListening ? t.release : t.hold}
-              </p>
+            {/* MAIN MIC BUTTON */}
+            <div className="flex flex-col items-center gap-10">
+              <div className="relative">
+                {isListening && (
+                  <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-20"></div>
+                )}
+                <button
+                  onMouseDown={handleHoldStart}
+                  onMouseUp={handleHoldEnd}
+                  onMouseLeave={handleHoldEnd}
+                  onTouchStart={handleHoldStart}
+                  onTouchEnd={handleHoldEnd}
+                  className={`relative w-72 h-72 rounded-full flex items-center justify-center transition-all duration-300 shadow-[0_20px_60px_rgba(0,0,0,0.15)] z-10 ${
+                    isListening ? 'bg-red-600 scale-110' : 'bg-black active:scale-90'
+                  }`}
+                >
+                  <Mic size={80} color="white" strokeWidth={2.5} className={isListening ? 'scale-110' : ''} />
+                </button>
+              </div>
+
+              <div className="text-center space-y-2">
+                <p className={`font-black text-sm uppercase tracking-[0.2em] transition-colors duration-300 ${
+                  isListening ? 'text-red-600 animate-pulse' : 'text-gray-300'
+                }`}>
+                  {isListening ? t.release : t.hold}
+                </p>
+              </div>
             </div>
           </div>
         ) : activeTab === 'transactions' ? (
@@ -110,14 +140,41 @@ export default function Home({ language = 'en' }: { language?: string }) {
         )}
       </div>
 
-      {/* FOOTER NAV - Fixed at bottom */}
-      <nav className="p-5 pb-8 bg-white border-t flex justify-around shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-        <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-black scale-110' : 'text-gray-300'}><Mic size={24} /></button>
-        <button onClick={() => setActiveTab('transactions')} className={activeTab === 'transactions' ? 'text-black scale-110' : 'text-gray-300'}><TrendingUp size={24} /></button>
-        <button onClick={() => setActiveTab('dashboard')} className={activeTab === 'dashboard' ? 'text-black scale-110' : 'text-gray-300'}><LayoutDashboard size={24} /></button>
+      {/* --- BOTTOM NAVIGATION --- */}
+      <nav className="p-6 pb-10 bg-white border-t flex justify-around items-center shadow-[0_-10px_40px_rgba(0,0,0,0.03)] rounded-t-[2.5rem]">
+        <button 
+          onClick={() => setActiveTab('home')} 
+          className={`transition-all duration-300 p-3 rounded-2xl ${activeTab === 'home' ? 'bg-black text-white shadow-xl scale-110' : 'text-gray-300 hover:text-gray-500'}`}
+        >
+          <Mic size={24} strokeWidth={activeTab === 'home' ? 3 : 2} />
+        </button>
+        
+        <button 
+          onClick={() => setActiveTab('transactions')} 
+          className={`transition-all duration-300 p-3 rounded-2xl ${activeTab === 'transactions' ? 'bg-black text-white shadow-xl scale-110' : 'text-gray-300 hover:text-gray-500'}`}
+        >
+          <TrendingUp size={24} strokeWidth={activeTab === 'transactions' ? 3 : 2} />
+        </button>
+        
+        <button 
+          onClick={() => setActiveTab('dashboard')} 
+          className={`transition-all duration-300 p-3 rounded-2xl ${activeTab === 'dashboard' ? 'bg-black text-white shadow-xl scale-110' : 'text-gray-300 hover:text-gray-500'}`}
+        >
+          <LayoutDashboard size={24} strokeWidth={activeTab === 'dashboard' ? 3 : 2} />
+        </button>
       </nav>
 
-      {showForm && <TransactionForm initialData={formData} language={language} onClose={() => setShowForm(false)} />}
+      {/* AUTO-POPPING TRANSACTION FORM */}
+      {showForm && (
+        <TransactionForm 
+          initialData={formData} 
+          language={language} 
+          onClose={() => {
+            setShowForm(false);
+            setFormData({ amount: '', description: '', type: 'expense' });
+          }} 
+        />
+      )}
     </div>
   );
 }
