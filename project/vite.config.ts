@@ -1,10 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  optimizeDeps: {
-    exclude: ['lucide-react'],
+  define: {
+    'global': 'window',
+    'process.env': {},
+    'process.browser': true,
+  },
+  server: {
+    host: true,
+    port: 5185,
+    strictPort: false,  // ← was true — now tries next port instead of crashing
+    cors: true,
+    // HMR over ngrok / mobile network
+    hmr: {
+      clientPort: 443,
+    },
   },
 });

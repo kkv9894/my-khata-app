@@ -1,22 +1,22 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💳</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    
     <title>My Khata - Smart AI Business Ledger</title>
-    <meta name="description" content="Manage your business expenses and income with simple voice commands." />
 
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://my-khata-2vhhzhdbc-kkv9894s-projects.vercel.app/" />
-    <meta property="og:title" content="My Khata - AI Business Manager" />
-    <meta property="og:description" content="Record transactions just by speaking. Simple, fast, and secure." />
-    <meta property="og:image" content="https://bolt.new/static/og_default.png" />
-
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="My Khata" />
-    <meta name="twitter:description" content="Your personal AI financial assistant." />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.all.min.js"></script>
+    <script>
+      window.global = window;
+      window.process = { env: { NODE_ENV: 'development' } };
+      window.onload = function() {
+        if (typeof lamejs !== 'undefined') {
+          window.Lame = lamejs;
+          console.log("✅ Audio Engine Locked and Loaded");
+        }
+      };
+    </script>
   </head>
   <body class="bg-white">
     <div id="root"></div>

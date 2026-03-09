@@ -1,38 +1,38 @@
-import { createClient } from '@supabase/supabase-js';
+﻿import { createClient } from '@supabase/supabase-js'
+import type {
+  ProfileRecord,
+  StaffAccessRecord,
+  TransactionRecord,
+  UdhaarCustomerRecord,
+  UdhaarTransactionRecord,
+} from './types'
 
-// --- FIXED: Added quotes around the URL and Key ---
-const supabaseUrl = 'https://knvwywragxiaignvdgmq.supabase.co'; 
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtudnd5d3JhZ3hpYWlnbnZkZ21xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NzYwMTUsImV4cCI6MjA4ODA1MjAxNX0.RU5rSxYz3E5TQ9pdem56EnC1fIF1bVwNk78BYnuLoU8';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Supabase environment variables are missing')
+}
 
-// --- DO NOT CHANGE THE TYPES BELOW (THEY KEEP THE APP RUNNING) ---
-export type Transaction = {
-  id: string;
-  user_id?: string;
-  category_id?: string | null;
-  amount: number;
-  type: 'income' | 'expense';
-  description: string;
-  voice_transcript?: string;
-  transaction_date?: string;
-  created_at?: string;
-  updated_at?: string;
-};
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+})
+
+export type Transaction = TransactionRecord
+export type Profile = ProfileRecord
+export type StaffAccess = StaffAccessRecord
+export type UdhaarCustomer = UdhaarCustomerRecord
+export type UdhaarTransaction = UdhaarTransactionRecord
 
 export type Category = {
-  id: string;
-  user_id: string;
-  name: string;
-  type: 'income' | 'expense';
-  color: string;
-  created_at: string;
-};
-
-export type Profile = {
-  id: string;
-  business_name: string;
-  phone: string;
-  created_at: string;
-  updated_at: string;
-};
+  id: string
+  user_id: string
+  name: string
+  type: 'income' | 'expense'
+  color: string
+  created_at: string
+}
