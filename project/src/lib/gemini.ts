@@ -398,198 +398,137 @@ OUTPUT: JSON only, no markdown.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // askFinancialAI — AI chat assistant
-// Strategy: Answer common questions LOCALLY from transaction data first.
-// Only call Gemini API for complex/unrecognized questions.
-// This eliminates 429 rate-limit errors for 90% of queries.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Helper: format Indian rupee amounts nicely
-const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-
-// Helper: get date boundaries
-const getDateRange = (period: 'today' | 'week' | 'month' | 'year') => {
-  const now = new Date();
-  const start = new Date();
-  if (period === 'today') { start.setHours(0, 0, 0, 0); }
-  else if (period === 'week') { start.setDate(now.getDate() - 7); start.setHours(0, 0, 0, 0); }
-  else if (period === 'month') { start.setDate(1); start.setHours(0, 0, 0, 0); }
-  else if (period === 'year') { start.setMonth(0, 1); start.setHours(0, 0, 0, 0); }
-  return { start, end: now };
-};
-
-// Helper: filter transactions by period
-const filterByPeriod = (txs: any[], period: 'today' | 'week' | 'month' | 'year') => {
-  const { start } = getDateRange(period);
-  return txs.filter(t => {
-    const d = new Date(t.created_at || t.transaction_date);
-    return d >= start;
-  });
-};
-
-// Local computation engine — answers most questions without any API call
-const tryLocalAnswer = (question: string, transactions: any[]): string | null => {
-  const q = question.toLowerCase().trim();
-
-  // ── Period detection ───────────────────────────────────────────────────────
-  const isToday   = /today|aaj|innaiku|indu/.test(q);
-  const isWeek    = /week|hafte|vaaram|ebhara/.test(q);
-  const isMonth   = /month|mahine|madam|maasam|this month/.test(q);
-  const isYear    = /year|saal|varudam|varsha/.test(q);
-  const period: 'today'|'week'|'month'|'year' =
-    isToday ? 'today' : isWeek ? 'week' : isMonth ? 'month' : isYear ? 'year' : 'month';
-  const periodLabel = isToday ? 'today' : isWeek ? 'this week' : isYear ? 'this year' : 'this month';
-
-  const filtered = filterByPeriod(transactions, period);
-  const allTime  = transactions;
-
-  const totalIn  = (txs: any[]) => txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
-  const totalOut = (txs: any[]) => txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
-
-  // ── SPEND questions ────────────────────────────────────────────────────────
-  if (/spend|spent|expense|kharcha|selavu|खर्च|செலவு|ఖర్చు|ಖರ್ಚು|ചെലവ്/.test(q)) {
-    const amt = totalOut(filtered);
-    if (amt === 0) return `You have no expenses recorded ${periodLabel}.`;
-    return `Your total expenses ${periodLabel} are ${fmt(amt)}.`;
-  }
-
-  // ── INCOME questions ───────────────────────────────────────────────────────
-  if (/income|earn|received|salary|sales|aaya|vandhuchu|వచ్చింది|வந்தது/.test(q)) {
-    const amt = totalIn(filtered);
-    if (amt === 0) return `No income recorded ${periodLabel}.`;
-    return `Your total income ${periodLabel} is ${fmt(amt)}.`;
-  }
-
-  // ── BALANCE / NET questions ────────────────────────────────────────────────
-  if (/balance|net|profit|baaki|bakki|மீதி|నెట్|ಬ್ಯಾಲೆನ್ಸ್/.test(q)) {
-    const inc = totalIn(filtered);
-    const exp = totalOut(filtered);
-    const net = inc - exp;
-    return `${periodLabel.charAt(0).toUpperCase() + periodLabel.slice(1)}: Income ${fmt(inc)}, Expenses ${fmt(exp)}, Net ${net >= 0 ? '+' : ''}${fmt(net)}.`;
-  }
-
-  // ── SUMMARY / P&L ─────────────────────────────────────────────────────────
-  if (/summary|report|total|pnl|p&l|saaransh|சுருக்கம்/.test(q)) {
-    const inc = totalIn(filtered);
-    const exp = totalOut(filtered);
-    const net = inc - exp;
-    const txCount = filtered.length;
-    return `${periodLabel.charAt(0).toUpperCase() + periodLabel.slice(1)} summary: ${txCount} transactions, Income ${fmt(inc)}, Expenses ${fmt(exp)}, Net ${net >= 0 ? '+' : ''}${fmt(net)}.`;
-  }
-
-  // ── TOP / BIGGEST expense ─────────────────────────────────────────────────
-  if (/top|biggest|most|highest|largest|maximum/.test(q) && /expense|spend|category/.test(q)) {
-    const expenses = filtered.filter(t => t.type === 'expense');
-    if (expenses.length === 0) return `No expenses found ${periodLabel}.`;
-
-    // Group by category
-    const byCategory: Record<string, number> = {};
-    expenses.forEach(t => {
-      const cat = t.category_label || 'General';
-      byCategory[cat] = (byCategory[cat] || 0) + Number(t.amount);
-    });
-    const sorted = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
-    const top3 = sorted.slice(0, 3).map(([cat, amt]) => `${cat} ${fmt(amt)}`).join(', ');
-    return `Your top expense categories ${periodLabel}: ${top3}.`;
-  }
-
-  // ── BIGGEST single transaction ────────────────────────────────────────────
-  if (/biggest|largest|highest|most expensive/.test(q) && !/category/.test(q)) {
-    const expenses = filtered.filter(t => t.type === 'expense');
-    if (expenses.length === 0) return `No expenses found ${periodLabel}.`;
-    const top = expenses.sort((a, b) => Number(b.amount) - Number(a.amount))[0];
-    return `Your biggest expense ${periodLabel} was ${fmt(top.amount)} for "${top.description || 'Voice entry'}".`;
-  }
-
-  // ── WHO OWES / UDHAAR ─────────────────────────────────────────────────────
-  if (/owe|owes|udhaar|udhar|credit|கடன்|అప్పు|ಸಾಲ|കടം/.test(q)) {
-    return null; // Pass to Gemini — needs udhaar_transactions table data
-  }
-
-  // ── COUNT transactions ─────────────────────────────────────────────────────
-  if (/how many|count|number of|kitne/.test(q)) {
-    return `You have ${filtered.length} transactions recorded ${periodLabel}.`;
-  }
-
-  // ── LAST / RECENT transaction ──────────────────────────────────────────────
-  if (/last|latest|recent|recent|最近|сondi|கடைசி/.test(q)) {
-    if (allTime.length === 0) return 'No transactions recorded yet.';
-    const last = allTime[0];
-    const d = new Date(last.created_at || last.transaction_date).toLocaleDateString('en-IN');
-    return `Your last transaction was ${last.type === 'income' ? 'received' : 'spent'} ${fmt(last.amount)} for "${last.description || 'Voice entry'}" on ${d}.`;
-  }
-
-  // ── FOOD / SPECIFIC CATEGORY ───────────────────────────────────────────────
-  if (/food|grocery|groceries|fuel|petrol|rent|transport|medicine|health/.test(q)) {
-    const keyword = /food/.test(q) ? 'Food'
-                  : /grocery|groceries/.test(q) ? 'Groceries'
-                  : /fuel|petrol/.test(q) ? 'Fuel'
-                  : /rent/.test(q) ? 'Rent'
-                  : /transport/.test(q) ? 'Transport'
-                  : /medicine|health/.test(q) ? 'Healthcare'
-                  : null;
-    if (keyword) {
-      const catTxs = filtered.filter(t =>
-        t.type === 'expense' &&
-        (t.category_label === keyword || (t.description || '').toLowerCase().includes(keyword.toLowerCase()))
-      );
-      const amt = catTxs.reduce((s: number, t: any) => s + Number(t.amount), 0);
-      if (amt === 0) return `No ${keyword.toLowerCase()} expenses found ${periodLabel}.`;
-      return `You spent ${fmt(amt)} on ${keyword.toLowerCase()} ${periodLabel} across ${catTxs.length} transactions.`;
-    }
-  }
-
-  // Not handled locally → fall through to Gemini
-  return null;
-};
-
 export const askFinancialAI = async (
   question: string,
   transactions: any[]
 ): Promise<string> => {
-  if (!transactions.length) return 'No transactions found. Please add some transactions first.';
-
-  // ── Step 1: Try to answer locally — zero API calls, instant response ───────
-  const localAnswer = tryLocalAnswer(question, transactions);
-  if (localAnswer) return localAnswer;
-
-  // ── Step 2: Complex query — call Gemini with transaction summary ───────────
   if (!GEMINI_API_KEY) return 'AI key not set. Add VITE_GEMINI_API_KEY to your .env file.';
-
   try {
-    // Send only last 100 transactions to stay within token limits
-    const txSummary = transactions.slice(0, 100).map(t => {
-      const d = new Date(t.created_at || t.transaction_date);
-      const dateStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-      const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-      return `${dateStr} ${timeStr}: ${t.type} ₹${t.amount} — ${t.description || 'Voice Entry'} [${t.category_label || 'General'}]`;
-    }).join('\n');
+    const txSummary = transactions.slice(0, 150).map(t =>
+      `${t.transaction_date}: ${t.type} ₹${t.amount} - ${t.description || 'Voice Entry'}`
+    ).join('\n');
 
     const prompt = `You are a friendly financial assistant for "My Khata", an Indian small-business ledger app.
 Recent transactions (newest first):
-${txSummary}
+${txSummary || 'No transactions recorded yet.'}
 
-User question: "${question}"
+User asks: "${question}"
 
-Rules:
-- Answer in 2-3 sentences max. Use ₹ for amounts with Indian formatting (e.g. ₹1,500).
-- Be conversational and helpful. If data is insufficient, say so clearly.
-- Reply in the SAME language as the question (Hindi/Tamil/Telugu/Kannada/Malayalam/English).
-- No markdown, no bullet points, no headers — plain text only.`;
+Rules: Answer in 2-3 sentences max. Use ₹ for amounts. Be conversational and friendly.
+If data is insufficient, say so clearly. Reply in the SAME language as the user.
+No markdown, no bullet points, no headers.`;
 
     const answer = await callGemini(prompt);
-    return answer.trim() || 'I couldn\'t find relevant data to answer that. Try asking about spending, income, or balance.';
-
+    return answer.trim() || 'No data found. Please add some transactions first.';
   } catch (err: any) {
     console.error('askFinancialAI error:', err);
-    // Friendly error messages without exposing internals
-    if (err?.message?.includes('429'))
-      return 'AI is getting many requests right now. Your basic questions (spend, income, balance) still work — try asking those!';
-    if (err?.message?.includes('400'))
-      return 'I couldn\'t process that question. Try rephrasing it, like "How much did I spend this month?"';
-    if (err?.message?.includes('API key') || err?.message?.includes('Missing'))
-      return 'AI key issue — check VITE_GEMINI_API_KEY in your .env file.';
-    if (err?.message?.includes('timed out'))
-      return 'AI took too long to respond. Your basic financial questions still work without AI!';
-    return 'I had trouble processing that. Try asking about spending, income, or your balance.';
+    if (err?.message?.includes('429')) return 'AI is busy right now. Please wait a moment and try again.';
+    if (err?.message?.includes('400')) return 'Could not process that question. Try rephrasing it.';
+    if (err?.message?.includes('API key') || err?.message?.includes('Missing')) return 'AI key issue — check VITE_GEMINI_API_KEY in .env';
+    if (err?.message?.includes('timed out')) return 'AI took too long. Please try again.';
+    return `AI error: ${err?.message ?? 'Unknown error'}`;
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ analyzeInventoryIntent — voice → structured inventory action
+// Business users only. Detects ADD_STOCK, SELL_STOCK, CHECK_STOCK intents.
+// Returns InventoryAction — caller handles Supabase upsert/decrement/query.
+// ADDITIVE: does not touch analyzeTransaction or any existing logic.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function analyzeInventoryIntent(text: string): Promise<import('./types').InventoryAction> {
+  const NONE: import('./types').InventoryAction = { action: 'NONE' };
+
+  if (!GEMINI_API_KEY) return NONE;
+
+  // Fast heuristic — skip AI if no inventory signals
+  const lo = text.toLowerCase();
+  const INVENTORY_SIGNALS = [
+    // English
+    'add stock','added','restocked','restock','received stock','stock in',
+    'sold','sale','sell','how much','how many','remaining','left','stock check',
+    // Tamil/Tanglish
+    'stock vandhuchu','stock add','vikkinaen','vikkapaduchu','evvalavu irukku',
+    'balance irukku','michi irukku','stock pottu',
+    // Hindi/Hinglish
+    'stock aaya','stock dala','becha','kitna bacha','kitna stock',
+    'maal aaya','maal becha','baaki kitna',
+    // Telugu
+    'stock vacchindi','amminamu','inka enta undi','stock vachindi',
+    // Kannada
+    'stock banthu','maaridde','entu ide','stock haakie',
+    // Malayalam
+    'stock vannu','varruth','ethra baaki','stock check',
+  ];
+
+  const hasInventorySignal = INVENTORY_SIGNALS.some(s => lo.includes(s));
+  if (!hasInventorySignal) return NONE;
+
+  const prompt = `You are the inventory AI for "My Khata", an Indian shop management app.
+Analyze this voice input: "${text}"
+
+Handle ALL Indian languages and dialects: English, Hindi, Tamil, Telugu, Kannada, Malayalam,
+and mixed code-switching: Tanglish, Hinglish, Telugish, Kanglish, Malayalish.
+
+INTENT RULES:
+━━━ ADD_STOCK (shopkeeper received/bought stock) ━━━
+Examples:
+  "Added 50 kg of sugar"        → ADD_STOCK sugar 50 kg
+  "stock vandhuchu 50 kg sugar" → ADD_STOCK sugar 50 kg
+  "50 kg sugar stock add panna" → ADD_STOCK sugar 50 kg
+  "maal aaya 50 kg cheeni"      → ADD_STOCK cheeni 50 kg
+  "stock banthu 50 kilo sakre"  → ADD_STOCK sakre 50 kg
+  "100 packets biscuit vandhuchu" → ADD_STOCK biscuit 100 packets
+
+━━━ SELL_STOCK (shopkeeper sold item to customer, also triggers income transaction) ━━━
+Examples:
+  "Sold 2 kg sugar for 100 rupees" → SELL_STOCK sugar 2 kg amount=100
+  "vikkinaen 2 kg sugar 100 ku"    → SELL_STOCK sugar 2 kg amount=100
+  "becha 2 kilo cheeni 100 mein"   → SELL_STOCK cheeni 2 kg amount=100
+  "amminamu 2 kg biyyam 80 ki"     → SELL_STOCK biyyam 2 kg amount=80
+  "maaridde 1 kg akki 60 ge"       → SELL_STOCK akki 1 kg amount=60
+
+━━━ CHECK_STOCK (shopkeeper asking how much stock remains) ━━━
+Examples:
+  "How much sugar is left?"        → CHECK_STOCK sugar
+  "evvalavu sugar irukku?"         → CHECK_STOCK sugar
+  "sugar kitna bacha hai?"         → CHECK_STOCK sugar
+  "sugar inka enta undi?"          → CHECK_STOCK sugar
+  "sugar ethra baaki undo?"        → CHECK_STOCK sugar
+
+━━━ NONE (not an inventory action) ━━━
+  Regular purchases/expenses like "bought milk 45" → NONE (that's a transaction, not stock management)
+  KEY DISTINCTION: "bought milk 45" = customer buying = expense transaction = NONE
+                   "stock add 50kg milk" = shopkeeper restocking = ADD_STOCK
+
+OUTPUT: JSON only, no markdown.
+For ADD_STOCK:   {"action":"ADD_STOCK","item":"string","quantity":number,"unit":"string"}
+For SELL_STOCK:  {"action":"SELL_STOCK","item":"string","quantity":number,"unit":"string","amount":number}
+For CHECK_STOCK: {"action":"CHECK_STOCK","item":"string"}
+For NONE:        {"action":"NONE"}`;
+
+  try {
+    const raw = await geminiPost({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1, topP: 0.1, topK: 1 }
+    }, 8000);
+
+    const parsed = extractJson(raw);
+    if (!parsed?.action || parsed.action === 'NONE') return NONE;
+
+    if (parsed.action === 'ADD_STOCK' && parsed.item && parsed.quantity > 0) {
+      return { action: 'ADD_STOCK', item: String(parsed.item), quantity: Number(parsed.quantity), unit: String(parsed.unit || 'units') };
+    }
+    if (parsed.action === 'SELL_STOCK' && parsed.item && parsed.quantity > 0) {
+      return { action: 'SELL_STOCK', item: String(parsed.item), quantity: Number(parsed.quantity), unit: String(parsed.unit || 'units'), amount: Number(parsed.amount || 0) };
+    }
+    if (parsed.action === 'CHECK_STOCK' && parsed.item) {
+      return { action: 'CHECK_STOCK', item: String(parsed.item) };
+    }
+    return NONE;
+  } catch (err) {
+    console.warn('analyzeInventoryIntent error (safe fallback):', err);
+    return NONE;
+  }
+}

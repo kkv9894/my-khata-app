@@ -711,6 +711,8 @@ const MORE_TABS = [
 // ─── Component ─────────────────────────────────────────────────────────────────
 export default function Home({ language = 'en' }: { language?: SupportedLanguage }) {
   const { user }   = useAuth()
+  // Derived from Supabase auth metadata — set at signup, defaults to 'business'
+  const accountType = (user?.user_metadata?.account_type ?? 'business') as 'personal' | 'business'
   const roleCtx    = useRole()
   const isOwner    = roleCtx.isOwner
   const isStaff    = roleCtx.isStaff
@@ -755,10 +757,7 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
     startRecording, stopRecording,
   } = useVoiceRecorder({
     language,
-    sarvamKey:       import.meta.env.VITE_SARVAM_API_KEY      ?? '',
-    googleKey:       import.meta.env.VITE_GOOGLE_STT_KEY      ?? '',
-    googleProjectId: import.meta.env.VITE_GOOGLE_PROJECT_ID   ?? '',
-    elevenLabsKey:   import.meta.env.VITE_ELEVENLABS_API_KEY  ?? '',
+    // Keys removed from browser — STT calls go through /api/stt/* serverless routes.
     onTranscript: (transcript: string, confidence: SttConfidence) => {
       void processAndSaveRef.current(sanitize(transcript), confidence)
     },
@@ -1365,6 +1364,7 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
         <ReceiptScanner
           onClose={() => setShowScanner(false)}
           onSaved={() => { goToTransactions() }}
+          accountType={accountType}
         />
       )}
 

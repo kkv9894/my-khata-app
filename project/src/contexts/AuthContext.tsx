@@ -2,14 +2,18 @@
 import type { AuthError, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
+export type AccountType = 'personal' | 'business'
+
 interface AuthContextType {
   user: User | null
   loading: boolean
+  accountType: AccountType
   signUp: (
     email: string,
     password: string,
     businessName: string,
-    phone: string
+    phone: string,
+    accountType?: AccountType
   ) => Promise<{ error: AuthError | Error | null }>
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
   signOut: () => Promise<{ error: AuthError | null }>
@@ -20,6 +24,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const accountType: AccountType =
+    (user?.user_metadata?.account_type as AccountType) ?? 'business'
 
   useEffect(() => {
     let isMounted = true
@@ -55,7 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
     businessName: string,
-    phone: string
+    phone: string,
+    accountType: AccountType = 'business'
   ) => {
     const cleanEmail = email.trim().toLowerCase()
     const cleanBusinessName = businessName.trim() || cleanEmail.split('@')[0]
@@ -67,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: {
         data: {
           full_name: cleanBusinessName,
+          account_type: accountType,
         },
       },
     })
@@ -78,9 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.user) {
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: data.user.id,
-        business_name: cleanBusinessName,
         full_name: cleanBusinessName,
-        shop_name: cleanBusinessName,
         phone: cleanPhone,
         role: 'owner',
         owner_id: null,
@@ -109,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, accountType, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )
