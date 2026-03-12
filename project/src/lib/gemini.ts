@@ -1,6 +1,46 @@
 ﻿// lib/gemini.ts
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+// ── Filler-word guard ─────────────────────────────────────────────────────────
+// Called BEFORE any API in processAndSave. If the ENTIRE transcript is just
+// conversational noise with no financial content → skip all API calls instantly.
+//
+// Strategy: no numbers AND every word matches known fillers → discard.
+// Safe: real transactions almost always contain a number (amount or quantity).
+const FILLER_SET = new Set([
+  // Kannada
+  'matthe','matte','matteh','mattenu','mattenuu','avnu','avalu','sari','seri',
+  'ho','hoo','anna','amma','ayyo','ayo','ooh','aah',
+  // Hindi / Hinglish
+  'aur','phir','phirr','haan','haa','toh','bas','accha','acha','theek','thik',
+  'yaar','bhai','arrey','arre','matlab','kyunki','lekin','acha',
+  // Tamil / Tanglish
+  'appuram','apuram','marubadiyum','marubadiyam','innum','seri','seri','paaru',
+  'enna','endha','aama','illa','athuvum','oru','aama','solli',
+  // Malayalam
+  'pinne','penne','athre','ille','athe','oo','pinne','alle',
+  // Telugu
+  'mariyu','inka','avunu','kaadu','sare','appudu','enta','em',
+  // Generic noise
+  'and','then','next','um','umm','uh','uhh','hmm','hm','okay','ok',
+  'sir','madam','anna','amma','bhai','didi',
+])
+
+/**
+ * Returns true if the ENTIRE transcript is filler — no numbers, no real items.
+ * Used to short-circuit processAndSave before any API call.
+ */
+export function isFillerOnly(text: string): boolean {
+  if (!text || !text.trim()) return true
+  // If there's any digit → likely a real transaction (has amount or quantity)
+  if (/\d/.test(text)) return false
+  // If text is longer than 6 words it's probably a sentence, not a filler burst
+  const words = text.trim().toLowerCase().split(/\s+/)
+  if (words.length > 6) return false
+  // All words must be known fillers
+  return words.every(w => FILLER_SET.has(w.replace(/[.,!?]/g, '')))
+}
 const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,7 +258,25 @@ NON-STANDARD GRAMMAR (grammatically wrong but financially clear):
 "customer 2000 ka diya aaj" → income ₹2000
 
 
-═══ STEP 1 — IS THIS REAL FINANCE? ════════════════════════════════════════════
+═══ STEP 0 — FILLER WORD FILTER ═══════════════════════════════════════════════
+You are processing NATURAL, MESSY SPEECH from busy Indian shopkeepers.
+Transcripts contain conversational noise that is NOT a transaction.
+
+STRICTLY IGNORE these words entirely — they carry ZERO financial meaning:
+  Kannada  : matthe, matte, mattenu, sari, anna, ayyo, avnu
+  Hindi    : aur, phir, haan, toh, bas, accha, theek, yaar, arrey
+  Tamil    : appuram, marubadiyum, innum, seri, enna, aama
+  Malayalam: pinne, penne, athre, ille, alle
+  Telugu   : mariyu, inka, avunu, sare, appudu
+  Universal: and, then, next, um, umm, uh, uhh, hmm, okay, ok, sir, madam
+
+CRITICAL AMOUNT RULES:
+- NEVER output amount=1 as a default. 1 rupee is almost never a real transaction.
+- NEVER invent or guess an amount. If no rupee amount is said → amount=0, confidence=low.
+- If the ENTIRE input is only filler words/conjunctions above → set is_financial=false, entries=[].
+- Only output entries where a clear price IN RUPEES was spoken.
+
+
 REAL = amount (any form) + item/action. Verb optional.
 NOT REAL = pure conversation: "hello", "testing", "what is this", "okay sir"
 ALWAYS FINANCIAL if: ₹ symbol, OR Indian number word, OR financial verb present
@@ -310,7 +368,7 @@ OUTPUT: JSON only. No markdown, no backticks, no extra text.
         : [];
 
     const entries = rawEntries
-      .filter((e: any) => Number(e.amount) > 0)
+      .filter((e: any) => Number(e.amount) > 1)   // >1 kills filler "amount=1" hallucinations
       .map((e: any) => ({
         item:     String(e.item || 'Voice Entry').trim(),
         amount:   Number(e.amount),
@@ -430,105 +488,3 @@ No markdown, no bullet points, no headers.`;
     return `AI error: ${err?.message ?? 'Unknown error'}`;
   }
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ✅ analyzeInventoryIntent — voice → structured inventory action
-// Business users only. Detects ADD_STOCK, SELL_STOCK, CHECK_STOCK intents.
-// Returns InventoryAction — caller handles Supabase upsert/decrement/query.
-// ADDITIVE: does not touch analyzeTransaction or any existing logic.
-// ─────────────────────────────────────────────────────────────────────────────
-export async function analyzeInventoryIntent(text: string): Promise<import('./types').InventoryAction> {
-  const NONE: import('./types').InventoryAction = { action: 'NONE' };
-
-  if (!GEMINI_API_KEY) return NONE;
-
-  // Fast heuristic — skip AI if no inventory signals
-  const lo = text.toLowerCase();
-  const INVENTORY_SIGNALS = [
-    // English
-    'add stock','added','restocked','restock','received stock','stock in',
-    'sold','sale','sell','how much','how many','remaining','left','stock check',
-    // Tamil/Tanglish
-    'stock vandhuchu','stock add','vikkinaen','vikkapaduchu','evvalavu irukku',
-    'balance irukku','michi irukku','stock pottu',
-    // Hindi/Hinglish
-    'stock aaya','stock dala','becha','kitna bacha','kitna stock',
-    'maal aaya','maal becha','baaki kitna',
-    // Telugu
-    'stock vacchindi','amminamu','inka enta undi','stock vachindi',
-    // Kannada
-    'stock banthu','maaridde','entu ide','stock haakie',
-    // Malayalam
-    'stock vannu','varruth','ethra baaki','stock check',
-  ];
-
-  const hasInventorySignal = INVENTORY_SIGNALS.some(s => lo.includes(s));
-  if (!hasInventorySignal) return NONE;
-
-  const prompt = `You are the inventory AI for "My Khata", an Indian shop management app.
-Analyze this voice input: "${text}"
-
-Handle ALL Indian languages and dialects: English, Hindi, Tamil, Telugu, Kannada, Malayalam,
-and mixed code-switching: Tanglish, Hinglish, Telugish, Kanglish, Malayalish.
-
-INTENT RULES:
-━━━ ADD_STOCK (shopkeeper received/bought stock) ━━━
-Examples:
-  "Added 50 kg of sugar"        → ADD_STOCK sugar 50 kg
-  "stock vandhuchu 50 kg sugar" → ADD_STOCK sugar 50 kg
-  "50 kg sugar stock add panna" → ADD_STOCK sugar 50 kg
-  "maal aaya 50 kg cheeni"      → ADD_STOCK cheeni 50 kg
-  "stock banthu 50 kilo sakre"  → ADD_STOCK sakre 50 kg
-  "100 packets biscuit vandhuchu" → ADD_STOCK biscuit 100 packets
-
-━━━ SELL_STOCK (shopkeeper sold item to customer, also triggers income transaction) ━━━
-Examples:
-  "Sold 2 kg sugar for 100 rupees" → SELL_STOCK sugar 2 kg amount=100
-  "vikkinaen 2 kg sugar 100 ku"    → SELL_STOCK sugar 2 kg amount=100
-  "becha 2 kilo cheeni 100 mein"   → SELL_STOCK cheeni 2 kg amount=100
-  "amminamu 2 kg biyyam 80 ki"     → SELL_STOCK biyyam 2 kg amount=80
-  "maaridde 1 kg akki 60 ge"       → SELL_STOCK akki 1 kg amount=60
-
-━━━ CHECK_STOCK (shopkeeper asking how much stock remains) ━━━
-Examples:
-  "How much sugar is left?"        → CHECK_STOCK sugar
-  "evvalavu sugar irukku?"         → CHECK_STOCK sugar
-  "sugar kitna bacha hai?"         → CHECK_STOCK sugar
-  "sugar inka enta undi?"          → CHECK_STOCK sugar
-  "sugar ethra baaki undo?"        → CHECK_STOCK sugar
-
-━━━ NONE (not an inventory action) ━━━
-  Regular purchases/expenses like "bought milk 45" → NONE (that's a transaction, not stock management)
-  KEY DISTINCTION: "bought milk 45" = customer buying = expense transaction = NONE
-                   "stock add 50kg milk" = shopkeeper restocking = ADD_STOCK
-
-OUTPUT: JSON only, no markdown.
-For ADD_STOCK:   {"action":"ADD_STOCK","item":"string","quantity":number,"unit":"string"}
-For SELL_STOCK:  {"action":"SELL_STOCK","item":"string","quantity":number,"unit":"string","amount":number}
-For CHECK_STOCK: {"action":"CHECK_STOCK","item":"string"}
-For NONE:        {"action":"NONE"}`;
-
-  try {
-    const raw = await geminiPost({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.1, topP: 0.1, topK: 1 }
-    }, 8000);
-
-    const parsed = extractJson(raw);
-    if (!parsed?.action || parsed.action === 'NONE') return NONE;
-
-    if (parsed.action === 'ADD_STOCK' && parsed.item && parsed.quantity > 0) {
-      return { action: 'ADD_STOCK', item: String(parsed.item), quantity: Number(parsed.quantity), unit: String(parsed.unit || 'units') };
-    }
-    if (parsed.action === 'SELL_STOCK' && parsed.item && parsed.quantity > 0) {
-      return { action: 'SELL_STOCK', item: String(parsed.item), quantity: Number(parsed.quantity), unit: String(parsed.unit || 'units'), amount: Number(parsed.amount || 0) };
-    }
-    if (parsed.action === 'CHECK_STOCK' && parsed.item) {
-      return { action: 'CHECK_STOCK', item: String(parsed.item) };
-    }
-    return NONE;
-  } catch (err) {
-    console.warn('analyzeInventoryIntent error (safe fallback):', err);
-    return NONE;
-  }
-}

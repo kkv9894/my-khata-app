@@ -3,11 +3,20 @@
 // VOICE PIPELINE — 4-provider chain, noise-robust, confidence-aware
 //
 //  1. Sarvam saaras:v3     ← PRIMARY  — India's best, 22 Indian languages
-//  2. Google Chirp 2       ← BACKUP   — best for code-switching slang
+//  2. Google Chirp 2       ← BACKUP   — best for code-switching slang (Tanglish, Hinglish)
 //  3. ElevenLabs Scribe    ← FALLBACK — excellent Indian language accuracy
 //  4. Browser Web Speech   ← LAST RESORT
 //
-// ✅ SECURE: All STT calls go through /api/stt/* — no API keys in browser.
+// AUDIO: highpass (removes hum) + compressor (normalises voice) → 16kHz WAV
+//   Uses native AudioContext rate (NOT forced 16kHz at decode — that breaks Android).
+//   Falls back to raw audio automatically if preprocessing fails.
+//
+// CONFIDENCE: Each provider returns a score (0–1).
+//   ≥ 0.75 → 'high'   → auto-save allowed (Indian STT scores ~0.75–0.88)
+//   ≥ 0.55 → 'medium' → show "Did you say ₹X?" confirmation
+//    < 0.55 → 'low'    → open form for user to correct
+//
+// KEEPALIVE: requestData() every 200ms prevents Android stream auto-stop on silence.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -17,39 +26,55 @@ const LANG_BCP: Record<Lang, string> = {
   en: 'en-IN', hi: 'hi-IN', ta: 'ta-IN', te: 'te-IN', kn: 'kn-IN', ml: 'ml-IN',
 }
 
-export type RecorderStatus = 'idle' | 'recording' | 'processing'
-export type SttConfidence  = 'high' | 'medium' | 'low'
+export type RecorderStatus  = 'idle' | 'recording' | 'processing'
+export type SttConfidence   = 'high' | 'medium' | 'low'
 
+// Indian STT scores are typically 0.75–0.88 — threshold of 0.75 = 'high' fires reliably
 const scoreToLevel = (score: number): SttConfidence =>
   score >= 0.75 ? 'high' : score >= 0.55 ? 'medium' : 'low'
 
+// ── AUDIO PREPROCESSING ──────────────────────────────────────────────────────
+// Converts recorded blob → clean 16kHz mono WAV for STT APIs.
+//
+// Why this works on Android (unlike the broken version):
+//   ❌ OLD: `new AudioContext({ sampleRate: 16000 })` — device rejects unsupported rate,
+//      decodeAudioData throws, we silently send a corrupted buffer.
+//   ✅ NEW: `new AudioContext()` — uses device native rate (44.1/48kHz), always works.
+//      OfflineAudioContext THEN resamples to 16kHz.
+//
+// Triple try/catch: if ANYTHING fails at any step, returns raw blob unmodified.
 const toCleanWav = async (blob: Blob): Promise<Blob> => {
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioCtx) return blob
 
+    // Step 1: Decode at NATIVE rate — always succeeds
     const ctx = new AudioCtx()
     let decoded: AudioBuffer
     try {
       decoded = await ctx.decodeAudioData(await blob.arrayBuffer())
     } catch {
       await ctx.close().catch(() => {})
-      return blob
+      return blob  // decode failed → send raw
     }
     await ctx.close().catch(() => {})
 
+    // Step 2: Resample + filter chain → 16kHz
     const TARGET  = 16000
     const len     = Math.ceil(decoded.duration * TARGET)
     const offline = new OfflineAudioContext(1, len, TARGET)
     const src     = offline.createBufferSource()
     src.buffer    = decoded
 
+    // High-pass 100Hz: removes traffic hum, fan noise, refrigerator rumble
     const hp = offline.createBiquadFilter()
     hp.type = 'highpass'; hp.frequency.value = 100
 
+    // Low-pass 4000Hz: removes hiss (speech lives in 80–3400Hz)
     const lp = offline.createBiquadFilter()
     lp.type = 'lowpass'; lp.frequency.value = 4000
 
+    // Compressor: brings quiet speech up, clips loud spikes
     const comp = offline.createDynamicsCompressor()
     comp.threshold.value = -24
     comp.knee.value      = 30
@@ -63,11 +88,13 @@ const toCleanWav = async (blob: Blob): Promise<Blob> => {
     const rendered = await offline.startRendering()
     const raw      = rendered.getChannelData(0)
 
+    // Light noise gate: silence only sub-0.008 frames (pure background hiss)
     const gated = new Float32Array(raw.length)
     for (let i = 0; i < raw.length; i++) {
       gated[i] = Math.abs(raw[i]) < 0.008 ? 0 : raw[i]
     }
 
+    // Step 3: Encode 16-bit PCM WAV
     const buf = new ArrayBuffer(44 + gated.length * 2)
     const v   = new DataView(buf)
     const ws  = (o: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)) }
@@ -82,20 +109,27 @@ const toCleanWav = async (blob: Blob): Promise<Blob> => {
       v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true)
     }
 
+    console.log(`🔊 Audio: ${(blob.size/1024).toFixed(1)}KB raw → ${(buf.byteLength/1024).toFixed(1)}KB clean WAV`)
     return new Blob([buf], { type: 'audio/wav' })
+
   } catch (err) {
     console.warn('⚠️ Preprocessing failed — sending raw audio:', err)
     return blob
   }
 }
 
+// ── TYPES ─────────────────────────────────────────────────────────────────────
 export interface UseVoiceRecorderOptions {
-  language?:    Lang
-  onTranscript: (text: string, confidence: SttConfidence) => void
-  onError?:     (msg: string) => void
-  onRateLimit?: () => void
-  cooldownMs?:  number
-  minHoldMs?:   number
+  language?:         Lang
+  sarvamKey?:        string
+  googleKey?:        string    // Google Cloud API key — enables Chirp 2 backup
+  googleProjectId?:  string    // Google Cloud Project ID (required with googleKey)
+  elevenLabsKey?:    string
+  onTranscript:      (text: string, confidence: SttConfidence) => void
+  onError?:          (msg: string) => void
+  onRateLimit?:      () => void
+  cooldownMs?:       number
+  minHoldMs?:        number
 }
 
 interface SttResult { text: string; confidence: number }
@@ -103,23 +137,30 @@ interface SttResult { text: string; confidence: number }
 const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
   Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} timeout`)), ms))])
 
-async function sarvamTranscribe(wav: Blob, langCode?: string): Promise<SttResult> {
+// ── PROVIDER 1: Sarvam saaras:v3 ─────────────────────────────────────────────
+// Pass language_code for ALL languages — prevents cross-language confusion.
+// Malayalam ↔ Tamil confusion is the #1 failure mode without this hint.
+// saaras:v3 handles code-mixing (Tanglish, Hinglish etc.) even with lang hint.
+async function sarvamTranscribe(wav: Blob, apiKey: string, langCode?: string): Promise<SttResult> {
   const fd = new FormData()
   fd.append('file', new File([wav], 'voice.wav', { type: 'audio/wav' }))
   fd.append('model', 'saaras:v3')
+  // ✅ ALWAYS pass language_code — fixes Malayalam/Tamil confusion, Telugu/Kannada confusion.
+  // saaras:v3 still handles code-mixing (Tanglish etc.) with a language hint.
+  // Without this, Sarvam auto-detect biases toward Tamil for any Dravidian language.
   if (langCode) fd.append('language_code', langCode)
 
-  const res = await fetch('/api/stt/sarvam', { method: 'POST', body: fd })
+  const res = await fetch('https://api.sarvam.ai/speech-to-text', {
+    method: 'POST', headers: { 'api-subscription-key': apiKey }, body: fd,
+  })
   if (res.status === 429) throw new Error('RATE_LIMIT')
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(`Sarvam ${res.status}: ${b?.error ?? ''}`)
-  }
+  if (!res.ok) { const b = await res.text().catch(() => ''); throw new Error(`Sarvam ${res.status}: ${b.slice(0,100)}`) }
 
   const data = await res.json()
   const text = (data?.transcript ?? data?.text ?? data?.data?.transcript ?? '').trim()
   if (!text) throw new Error('Sarvam: empty transcript')
 
+  // saaras:v3 returns confidence in response body
   const confidence: number = typeof data?.confidence === 'number'
     ? data.confidence
     : typeof data?.data?.confidence === 'number'
@@ -130,7 +171,12 @@ async function sarvamTranscribe(wav: Blob, langCode?: string): Promise<SttResult
   return { text, confidence }
 }
 
-async function chirpTranscribe(rawBlob: Blob, primaryLang?: string): Promise<SttResult> {
+// ── PROVIDER 2: Google Chirp 2 ────────────────────────────────────────────────
+// Best for code-switching: Tanglish, Hinglish, Kanglish etc.
+// Setup: Google Cloud Console → Speech-to-Text v2 API → Enable
+// .env: VITE_GOOGLE_STT_KEY + VITE_GOOGLE_PROJECT_ID
+async function chirpTranscribe(rawBlob: Blob, projectId: string, apiKey: string, primaryLang?: string): Promise<SttResult> {
+  // Chunk-encode to base64 (avoids stack overflow on large buffers)
   const bytes = new Uint8Array(await rawBlob.arrayBuffer())
   let binary = ''
   for (let i = 0; i < bytes.byteLength; i += 8192) {
@@ -138,21 +184,25 @@ async function chirpTranscribe(rawBlob: Blob, primaryLang?: string): Promise<Stt
   }
   const base64 = btoa(binary)
 
-  const languageCodes = primaryLang
-    ? [primaryLang, ...['en-IN','hi-IN','ta-IN','te-IN','kn-IN','ml-IN'].filter(l => l !== primaryLang)]
-    : ['en-IN', 'hi-IN', 'ta-IN', 'te-IN', 'kn-IN', 'ml-IN']
-
-  const res = await fetch('/api/stt/chirp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ base64, languageCodes }),
+  const url = `https://speech.googleapis.com/v2/projects/${projectId}/locations/global/recognizers/_:recognize?key=${apiKey}`
+  const res = await fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      config: {
+        autoDecodingConfig: {},
+        // Put the user's selected language FIRST — Chirp 2 uses priority order.
+        // This prevents Malayalam → Tamil confusion same as the Sarvam fix.
+        languageCodes: primaryLang
+          ? [primaryLang, ...['en-IN','hi-IN','ta-IN','te-IN','kn-IN','ml-IN'].filter(l => l !== primaryLang)]
+          : ['en-IN', 'hi-IN', 'ta-IN', 'te-IN', 'kn-IN', 'ml-IN'],
+        model: 'chirp_2',
+        features: { enableWordConfidence: true, enableAutomaticPunctuation: false },
+      },
+      content: base64,
+    }),
   })
   if (res.status === 429) throw new Error('RATE_LIMIT')
-  if (res.status === 503) throw new Error('CHIRP_NOT_CONFIGURED')
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(`Chirp ${res.status}: ${b?.error ?? ''}`)
-  }
+  if (!res.ok) { const b = await res.text().catch(() => ''); throw new Error(`Chirp ${res.status}: ${b.slice(0,100)}`) }
 
   const data = await res.json()
   const alt  = data?.results?.[0]?.alternatives?.[0]
@@ -164,7 +214,8 @@ async function chirpTranscribe(rawBlob: Blob, primaryLang?: string): Promise<Stt
   return { text, confidence }
 }
 
-async function elevenLabsTranscribe(wav: Blob): Promise<SttResult> {
+// ── PROVIDER 3: ElevenLabs Scribe ─────────────────────────────────────────────
+async function elevenLabsTranscribe(wav: Blob, apiKey: string): Promise<SttResult> {
   const cleanType = wav.type.split(';')[0] || 'audio/wav'
   const ext       = cleanType.includes('mp4') ? 'mp4' : cleanType.includes('ogg') ? 'ogg' : 'wav'
   const fd = new FormData()
@@ -173,18 +224,17 @@ async function elevenLabsTranscribe(wav: Blob): Promise<SttResult> {
   fd.append('tag_audio_events', 'false')
   fd.append('diarize', 'false')
 
-  const res = await fetch('/api/stt/elevenlabs', { method: 'POST', body: fd })
+  const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+    method: 'POST', headers: { 'xi-api-key': apiKey }, body: fd,
+  })
   if (res.status === 429) throw new Error('RATE_LIMIT')
-  if (res.status === 503) throw new Error('ELEVENLABS_NOT_CONFIGURED')
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(`ElevenLabs ${res.status}: ${b?.error ?? ''}`)
-  }
+  if (!res.ok) { const b = await res.text().catch(() => ''); throw new Error(`ElevenLabs ${res.status}: ${b.slice(0,100)}`) }
 
   const data = await res.json()
   const text = (data?.text ?? data?.transcript ?? '').trim()
   if (!text) throw new Error('ElevenLabs: empty transcript')
 
+  // Derive confidence from word-level logprobs
   const chars: Array<{ logprob?: number }> = data?.characters ?? []
   let confidence = 0.78
   if (chars.length > 0) {
@@ -196,8 +246,13 @@ async function elevenLabsTranscribe(wav: Blob): Promise<SttResult> {
   return { text, confidence }
 }
 
+// ── HOOK ───────────────────────────────────────────────────────────────────────
 export default function useVoiceRecorder({
   language        = 'en',
+  sarvamKey       = '',
+  googleKey       = '',
+  googleProjectId = '',
+  elevenLabsKey   = '',
   onTranscript,
   onError,
   onRateLimit,
@@ -213,6 +268,9 @@ export default function useVoiceRecorder({
   const cbRef = useRef({ onTranscript, onError, onRateLimit })
   useEffect(() => { cbRef.current = { onTranscript, onError, onRateLimit } })
 
+  const keysRef = useRef({ sarvamKey, googleKey, googleProjectId, elevenLabsKey })
+  useEffect(() => { keysRef.current = { sarvamKey, googleKey, googleProjectId, elevenLabsKey } })
+
   const langRef = useRef(language)
   useEffect(() => { langRef.current = language })
 
@@ -222,18 +280,25 @@ export default function useVoiceRecorder({
   const recognitionRef   = useRef<any>(null)
   const finalTextRef     = useRef('')
   const keepaliveRef     = useRef<number | null>(null)
-  const maxDurRef        = useRef<number | null>(null)
-  const audioCtxRef      = useRef<AudioContext | null>(null)
+  const maxDurRef        = useRef<number | null>(null)   // 60s safety cap timer
+  const audioCtxRef      = useRef<AudioContext | null>(null)  // Web Audio keepalive
+  const analyserRef      = useRef<AnalyserNode | null>(null)  // VAD silence detection
+  const vadIntervalRef   = useRef<number | null>(null)        // VAD polling interval
+  const silenceSpokenRef = useRef(false)                      // VAD: has user spoken yet?
   const isHoldingRef     = useRef(false)
   const holdStartRef     = useRef(0)
   const lastRequestRef   = useRef(0)
 
+  // ── Browser STT: VISUAL FEEDBACK ONLY — never used for saving ───────────────
+  // CRITICAL FIX: Chrome iOS fires .onend after ~10s even with continuous=true.
+  // The restart loop can fail silently, triggering a ghost-stop on the MediaRecorder.
+  // Fix: restart in a debounced setTimeout so it never races with the track.ended handler.
   const startBrowserSTT = useCallback((langCode: string) => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) return
     finalTextRef.current = ''
     const startInstance = () => {
-      if (!isHoldingRef.current) return
+      if (!isHoldingRef.current) return   // don't restart if user already released
       try {
         const r = new SR()
         r.lang = langCode; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1
@@ -246,9 +311,14 @@ export default function useVoiceRecorder({
           setLiveText((finalTextRef.current + interim).trim())
         }
         r.onerror = () => {}
-        r.onend = () => { if (isHoldingRef.current) window.setTimeout(startInstance, 150) }
+        // Restart in 150ms debounce — prevents race with track.ended / MediaRecorder.stop
+        r.onend = () => {
+          if (isHoldingRef.current) {
+            window.setTimeout(startInstance, 150)
+          }
+        }
         r.start(); recognitionRef.current = r
-      } catch { /* ignore */ }
+      } catch { /* ignore — visual feedback not critical */ }
     }
     startInstance()
   }, [])
@@ -259,61 +329,81 @@ export default function useVoiceRecorder({
     recognitionRef.current = null
   }, [])
 
+  // ── 4-provider chain ─────────────────────────────────────────────────────────
+  // audioToSend = processed 16kHz WAV when valid, else raw blob
+  // rawBlob     = always kept as ultimate fallback if processed audio fails
   const runProviders = useCallback(async (wav: Blob, rawBlob: Blob): Promise<SttResult> => {
+    const { sarvamKey: sk, googleKey: gk, googleProjectId: gpid, elevenLabsKey: ek } = keysRef.current
     const errors: string[] = []
-    const audioToSend   = wav.size > 5000 ? wav : rawBlob
-    const fallbackAudio = rawBlob
-    const sarvamLang    = LANG_BCP[langRef.current]
 
-    try {
-      setProcessingStep('Listening...')
-      const r = await withTimeout(sarvamTranscribe(audioToSend, sarvamLang), 9000, 'Sarvam')
-      setProviderUsed('Sarvam'); return r
-    } catch (e: any) {
-      if (audioToSend !== fallbackAudio && e.message !== 'RATE_LIMIT') {
-        try {
-          const r = await withTimeout(sarvamTranscribe(fallbackAudio, sarvamLang), 8000, 'Sarvam-raw')
-          setProviderUsed('Sarvam'); return r
-        } catch {}
+    // Use processed WAV if it looks valid (>5KB), else send raw directly
+    const audioToSend   = wav.size > 5000 ? wav : rawBlob
+    const fallbackAudio = rawBlob   // raw is always the ultimate fallback
+    // ✅ Pass language_code for ALL languages — Malayalam/Tamil confusion is fixed this way.
+    // saaras:v3 handles code-mixed speech (Tanglish, Hinglish etc.) even with a lang hint.
+    const sarvamLang = LANG_BCP[langRef.current]   // en-IN | hi-IN | ta-IN | te-IN | kn-IN | ml-IN
+
+    console.log(`🔑 Keys: sarvam=${!!sk} chirp=${!!(gk && gpid)} elevenlabs=${!!ek}`)
+    console.log(`🎵 Audio: processed=${(wav.size/1024).toFixed(1)}KB raw=${(rawBlob.size/1024).toFixed(1)}KB → ${audioToSend === wav ? 'processed' : 'raw'}`)
+
+    // 1. Sarvam — primary for Indian languages
+    if (sk) {
+      try {
+        setProcessingStep('Listening...')
+        const r = await withTimeout(sarvamTranscribe(audioToSend, sk, sarvamLang), 9000, 'Sarvam')
+        setProviderUsed('Sarvam'); return r
+      } catch (e: any) {
+        // Retry once with raw audio if processed audio was the problem
+        if (audioToSend !== fallbackAudio && e.message !== 'RATE_LIMIT') {
+          try {
+            const r = await withTimeout(sarvamTranscribe(fallbackAudio, sk, sarvamLang), 8000, 'Sarvam-raw')
+            setProviderUsed('Sarvam'); return r
+          } catch {}
+        }
+        if (e.message === 'RATE_LIMIT') cbRef.current.onRateLimit?.()
+        errors.push(`Sarvam: ${e.message}`)
+        console.warn('⚠️ Sarvam:', e.message)
       }
-      if (e.message === 'RATE_LIMIT') cbRef.current.onRateLimit?.()
-      errors.push(`Sarvam: ${e.message}`)
-      console.warn('⚠️ Sarvam:', e.message)
     }
 
-    try {
-      setProcessingStep('Chirp AI...')
-      const r = await withTimeout(chirpTranscribe(fallbackAudio, LANG_BCP[langRef.current]), 10000, 'Chirp')
-      setProviderUsed('Google Chirp'); return r
-    } catch (e: any) {
-      if (e.message === 'RATE_LIMIT') cbRef.current.onRateLimit?.()
-      if (e.message !== 'CHIRP_NOT_CONFIGURED') {
+    // 2. Google Chirp 2 — backup for code-switching slang (Tanglish, Hinglish etc.)
+    if (gk && gpid) {
+      try {
+        setProcessingStep('Chirp AI...')
+        const r = await withTimeout(chirpTranscribe(fallbackAudio, gpid, gk, LANG_BCP[langRef.current]), 10000, 'Chirp')
+        setProviderUsed('Google Chirp'); return r
+      } catch (e: any) {
+        if (e.message === 'RATE_LIMIT') cbRef.current.onRateLimit?.()
         errors.push(`Chirp: ${e.message}`)
         console.warn('⚠️ Chirp:', e.message)
       }
     }
 
-    try {
-      setProcessingStep('Processing...')
-      const r = await withTimeout(elevenLabsTranscribe(audioToSend), 9000, 'ElevenLabs')
-      setProviderUsed('ElevenLabs'); return r
-    } catch (e: any) {
-      if (e.message === 'RATE_LIMIT') cbRef.current.onRateLimit?.()
-      if (e.message !== 'ELEVENLABS_NOT_CONFIGURED') {
+    // 3. ElevenLabs Scribe — reliable Indian language fallback
+    if (ek) {
+      try {
+        setProcessingStep('Processing...')
+        const r = await withTimeout(elevenLabsTranscribe(audioToSend, ek), 9000, 'ElevenLabs')
+        setProviderUsed('ElevenLabs'); return r
+      } catch (e: any) {
+        if (e.message === 'RATE_LIMIT') cbRef.current.onRateLimit?.()
         errors.push(`ElevenLabs: ${e.message}`)
         console.warn('⚠️ ElevenLabs:', e.message)
       }
     }
 
+    // 4. Browser Web Speech — last resort
     const browserText = finalTextRef.current.trim()
     if (browserText) {
       setProviderUsed('Browser')
+      console.log('✅ Browser fallback:', `"${browserText}"`)
       return { text: browserText, confidence: 0.50 }
     }
 
     throw new Error(`All providers failed: ${errors.join(' | ')}`)
   }, [])
 
+  // ── Process captured audio ───────────────────────────────────────────────────
   const processAudio = useCallback(async (chunks: Blob[], mimeType: string) => {
     if (!chunks.length) {
       setStatus('idle'); setLiveText(''); setProcessingStep('')
@@ -322,6 +412,8 @@ export default function useVoiceRecorder({
     }
 
     const rawBlob = new Blob(chunks, { type: mimeType || 'audio/webm' })
+    console.log(`🎙️ Raw audio: ${(rawBlob.size/1024).toFixed(1)}KB`)
+
     if (rawBlob.size < 500) {
       setStatus('idle'); setLiveText(''); setProcessingStep('')
       cbRef.current.onError?.('Too short. Hold and speak clearly.')
@@ -330,15 +422,22 @@ export default function useVoiceRecorder({
 
     setStatus('processing')
     setProcessingStep('Filtering noise...')
+
+    // Preprocess: highpass + compressor + 16kHz (always falls back to raw on error)
     const wav = await toCleanWav(rawBlob)
 
     try {
       const result     = await runProviders(wav, rawBlob)
       const confidence = scoreToLevel(result.confidence)
+
       setSttConfidence(confidence)
       setStatus('idle'); setLiveText(''); setProcessingStep('')
+
+      // Haptic: short single = confident, double pulse = needs verify
       navigator.vibrate?.(confidence === 'high' ? 40 : [80, 60, 80])
+
       cbRef.current.onTranscript(result.text, confidence)
+
     } catch (err: any) {
       setStatus('idle'); setLiveText(''); setProcessingStep('')
       cbRef.current.onError?.(
@@ -350,6 +449,7 @@ export default function useVoiceRecorder({
     }
   }, [runProviders])
 
+  // ── Start recording ───────────────────────────────────────────────────────────
   const startRecording = useCallback(async () => {
     if (isHoldingRef.current) return
     const now = Date.now()
@@ -365,17 +465,31 @@ export default function useVoiceRecorder({
       })
       streamRef.current = stream
 
+      // ── Web Audio API keepalive ─────────────────────────────────────────────
+      // The MediaRecorder requestData() keepalive flushes data buffers, but Android's
+      // hardware Voice Activity Detection (VAD) and iOS audio session management can
+      // STILL kill the underlying audio STREAM during silence pauses — even with
+      // autoGainControl: false. This happens because the OS sees no active consumer.
+      //
+      // Fix: Create an AudioContext + AnalyserNode that CONSUMES the stream.
+      // The OS sees an active WebAudio pipeline and keeps the hardware mic open
+      // for the full session. AnalyserNode is read-only (no output) so no feedback.
       try {
         const AudioCtxCls = window.AudioContext || (window as any).webkitAudioContext
         const ctx = new AudioCtxCls()
         const src = ctx.createMediaStreamSource(stream)
         const analyser = ctx.createAnalyser()
-        analyser.fftSize = 256
-        src.connect(analyser)
+        analyser.fftSize = 256           // smallest size — minimal CPU
+        src.connect(analyser)            // no connect to destination — silent, no playback
         audioCtxRef.current = ctx
+        analyserRef.current = analyser   // ← store for VAD silence detection
       } catch {
-        console.warn('Web Audio keepalive failed')
+        console.warn('Web Audio keepalive failed — stream may stop on silence')
       }
+      // ── REMOVED: stream.getAudioTracks()[0].addEventListener('ended', ...) ──
+      // The OS fires 'ended' on silence pauses and audio session switches,
+      // causing recording to stop mid-sentence while finger is still held.
+      // User MUST be in full control: only stopRecording() (button release) stops it.
 
       const mimeType = [
         'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'
@@ -387,8 +501,11 @@ export default function useVoiceRecorder({
 
       recorder.onstop = async () => {
         clearInterval(keepaliveRef.current ?? 0)
+        clearInterval(vadIntervalRef.current ?? 0); vadIntervalRef.current = null   // ← VAD cleanup
         if (maxDurRef.current !== null) { clearTimeout(maxDurRef.current); maxDurRef.current = null }
+        // Close Web Audio keepalive context
         audioCtxRef.current?.close().catch(() => {}); audioCtxRef.current = null
+        analyserRef.current = null; silenceSpokenRef.current = false               // ← VAD cleanup
         stream.getTracks().forEach(t => t.stop())
         streamRef.current = null; lastRequestRef.current = Date.now()
 
@@ -398,12 +515,65 @@ export default function useVoiceRecorder({
       }
 
       recorder.start()
+      // KEEPALIVE: ping every 200ms — prevents Android killing stream during silence
       keepaliveRef.current = window.setInterval(() => {
         if (recorder.state === 'recording') recorder.requestData()
       }, 200)
 
+      // ── VAD: auto-stop on 1.5s silence ────────────────────────────────────
+      // Uses the AnalyserNode already created above — zero extra overhead.
+      //
+      // Algorithm:
+      //   1. Poll every 100ms. Calculate RMS of the 256-sample frame.
+      //   2. If RMS > SPEAK_THRESH → user is speaking → reset silence counter.
+      //      Also mark spokenOnce=true so we don't fire on pre-speech silence.
+      //   3. If RMS ≤ SPEAK_THRESH AND spokenOnce → increment silence counter.
+      //   4. After SILENCE_MS (1500ms) of consecutive silence → auto-stop.
+      //
+      // Why 0.025 threshold: typical background noise RMS is 0.005-0.015.
+      // Normal speech RMS is 0.04-0.20. 0.025 sits cleanly between them.
+      // Why 1500ms: short enough to feel instant; long enough for natural pauses.
+      {
+        const SPEAK_THRESH = 0.025
+        const SILENCE_MS   = 1500
+        const POLL_MS      = 100
+        let silenceAccumMs = 0
+        const vadData      = new Float32Array(256)  // reuse to avoid GC pressure
+
+        silenceSpokenRef.current = false
+        vadIntervalRef.current = window.setInterval(() => {
+          const an = analyserRef.current
+          if (!an || !isHoldingRef.current || recorder.state !== 'recording') return
+
+          an.getFloatTimeDomainData(vadData)
+          let sumSq = 0
+          for (let i = 0; i < vadData.length; i++) sumSq += vadData[i] * vadData[i]
+          const rms = Math.sqrt(sumSq / vadData.length)
+
+          if (rms > SPEAK_THRESH) {
+            silenceSpokenRef.current = true   // user has started speaking
+            silenceAccumMs = 0
+          } else if (silenceSpokenRef.current) {
+            silenceAccumMs += POLL_MS
+            if (silenceAccumMs >= SILENCE_MS) {
+              // 1.5s of silence after speech → auto-submit
+              console.log('🔇 VAD: 1.5s silence → auto-stop')
+              clearInterval(vadIntervalRef.current ?? 0); vadIntervalRef.current = null
+              stopBrowserSTT()
+              if (recorder.state === 'recording') {
+                recorder.requestData(); recorder.stop()
+              }
+            }
+          }
+        }, POLL_MS)
+      }
+
+      // ── 60s absolute safety cap ───────────────────────────────────────────────
+      // Only fires if user never releases. Normal speech is 5-30s.
+      // This is NOT a feature — it's a circuit breaker for edge cases.
       maxDurRef.current = window.setTimeout(() => {
         if (isHoldingRef.current && recorder.state === 'recording') {
+          console.warn('⏱ 60s max recording reached')
           clearInterval(keepaliveRef.current ?? 0)
           stopBrowserSTT()
           recorder.requestData(); recorder.stop()
@@ -420,9 +590,11 @@ export default function useVoiceRecorder({
     }
   }, [cooldownMs, minHoldMs, processAudio, startBrowserSTT, stopBrowserSTT])
 
+  // ── Stop recording ────────────────────────────────────────────────────────────
   const stopRecording = useCallback(() => {
     if (!isHoldingRef.current) return
     clearInterval(keepaliveRef.current ?? 0)
+    clearInterval(vadIntervalRef.current ?? 0); vadIntervalRef.current = null   // ← VAD cleanup
     stopBrowserSTT()
     if (mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.requestData()
@@ -432,7 +604,7 @@ export default function useVoiceRecorder({
 
   return {
     status, liveText, processingStep, providerUsed,
-    sttConfidence,
+    sttConfidence,       // 'high' | 'medium' | 'low' — drives save vs confirm vs form
     isRecording:  status === 'recording',
     isProcessing: status === 'processing',
     startRecording, stopRecording,

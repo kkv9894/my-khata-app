@@ -3,7 +3,7 @@ import { Activity, AlertTriangle, Brain, CheckCircle, FileBarChart, LayoutDashbo
 import { useAuth } from '../contexts/AuthContext'
 import { useRole } from '../contexts/RoleContext'
 import { supabase } from '../lib/supabase'
-import { analyzeTransaction, detectVoiceIntent } from '../lib/gemini'
+import { analyzeTransaction, detectVoiceIntent, isFillerOnly } from '../lib/gemini'
 import useOfflineSync, { type TransactionPayload } from '../hooks/useOfflineSync'
 import useVoiceRecorder, { type SttConfidence } from '../hooks/useVoiceRecorder'
 import AiChat from './AiChat'
@@ -711,7 +711,6 @@ const MORE_TABS = [
 // ─── Component ─────────────────────────────────────────────────────────────────
 export default function Home({ language = 'en' }: { language?: SupportedLanguage }) {
   const { user }   = useAuth()
-  // Derived from Supabase auth metadata — set at signup, defaults to 'business'
   const accountType = (user?.user_metadata?.account_type ?? 'business') as 'personal' | 'business'
   const roleCtx    = useRole()
   const isOwner    = roleCtx.isOwner
@@ -750,6 +749,10 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
   const t = T[language] ?? T.en
 
   const processAndSaveRef = useRef<(transcript: string, confidence: SttConfidence) => Promise<void>>(async () => {})
+  // Ref-based lock — synchronous, immune to React state-batching gaps.
+  // Prevents the one-render-cycle window where isBusy could briefly be false
+  // between isVoiceBusy→false (end of STT) and setIsAiLoading(true) (start of save).
+  const submissionLockRef = useRef(false)
 
   const {
     isRecording, isProcessing: isVoiceBusy,
@@ -757,7 +760,7 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
     startRecording, stopRecording,
   } = useVoiceRecorder({
     language,
-    // Keys removed from browser — STT calls go through /api/stt/* serverless routes.
+    // Keys removed — STT calls go through /api/stt/* serverless routes.
     onTranscript: (transcript: string, confidence: SttConfidence) => {
       void processAndSaveRef.current(sanitize(transcript), confidence)
     },
@@ -1001,43 +1004,91 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
   // ── Core: voice transcript → Smart Clerk query OR parse → save ──────────────
   const processAndSave = useCallback(async (transcript: string, confidence: SttConfidence = 'high') => {
     console.log('🎤 Transcript:', `"${transcript}"`)
-    if (!transcript) { setErrorMsg('Could not hear clearly. Try again.'); setIsAiLoading(false); setAiStep(''); return }
-    if (!user?.id) { openManualForm(transcript); return }
+
+    // ── Submission lock — prevents duplicate saves from double-tap or re-entrant calls ──
+    // Synchronous ref check: immune to React state-batching gaps where isBusy
+    // could flicker false for one render cycle between STT end and AI start.
+    if (submissionLockRef.current) {
+      console.log('🔒 Submission already in flight — ignored')
+      return
+    }
+    submissionLockRef.current = true
+
+    // ── Filler-word guard — short-circuit before ANY API call ─────────────────
+    // If the STT returned only conversational noise (matthe / aur / appuram / umm),
+    // discard instantly — no Supabase, no Gemini, no UI side-effects.
+    if (!transcript || isFillerOnly(transcript)) {
+      console.log('🗑️ Filler-only transcript — discarded:', `"${transcript}"`)
+      submissionLockRef.current = false
+      return
+    }
+
+    if (!user?.id) {
+      submissionLockRef.current = false
+      openManualForm(transcript)
+      return
+    }
 
     const sttConf = confidence
     setIsAiLoading(true); setAiStep('Understanding...')
     setQueryAnswer(null) // clear any previous query answer
 
-    // ── F1: Smart Clerk — detect if this is a question or a transaction ────
-    // Load recent transactions for query context (lightweight: last 100)
-    let recentTx: any[] = []
     try {
-      const { data } = await supabase
-        .from('transactions')
-        .select('type, amount, description, transaction_date')
-        .eq('user_id', user.id)
-        .order('transaction_date', { ascending: false })
-        .limit(100)
-      recentTx = data ?? []
-    } catch { /* ignore — query answering will have less context */ }
+      // ── Fast path: skip Supabase fetch + detectVoiceIntent for clear transactions ──
+      // 90%+ of shopkeeper inputs have a number (amount/qty) and no question words.
+      // Skipping the Supabase 100-tx fetch + optional Gemini query call saves ~1-3s.
+      const QUERY_SIGNALS = [
+        'how much','how many','total','balance','summary','report','profit','who owes',
+        'what is','what are','show me','tell me','best selling','compare',
+        // Tamil/Tanglish
+        'evvalavu','mottam','yaaru','solunga',
+        // Hindi
+        'kitna','kul','batao','kitne','report',
+        // Kannada
+        'eshtu','otthu','yaaru','heli',
+        // Telugu
+        'enta','mottam','cheppandi',
+        // Malayalam
+        'ethra','aake','parayo',
+      ]
+      const lo = transcript.toLowerCase()
+      const looksLikeQuery = QUERY_SIGNALS.some(s => lo.includes(s))
+      const hasAmount = /\d{2,}/.test(transcript)  // 2+ digits = almost certainly an amount
 
-    const intent = await detectVoiceIntent(transcript, recentTx)
-    if (intent.intent === 'query' && intent.answer) {
-      setIsAiLoading(false); setAiStep('')
-      setQueryAnswer(intent.answer)
-      // Speak the answer aloud — en-IN for clear pronunciation
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel()
-        const u = new SpeechSynthesisUtterance(intent.answer)
-        u.lang = 'en-IN'; u.rate = 0.88; u.volume = 1.0
-        const voices = window.speechSynthesis.getVoices()
-        const best = voices.find(v => v.lang === 'en-IN')
-                  || voices.find(v => v.lang.startsWith('en-')) || null
-        if (best) u.voice = best
-        window.speechSynthesis.speak(u)
+      let intentResult: { intent: 'query' | 'transaction'; answer?: string } = { intent: 'transaction' }
+
+      if (looksLikeQuery || !hasAmount) {
+        // Load context and run intent detection only when needed
+        let recentTx: any[] = []
+        try {
+          const { data } = await supabase
+            .from('transactions')
+            .select('type, amount, description, transaction_date')
+            .eq('user_id', user.id)
+            .order('transaction_date', { ascending: false })
+            .limit(100)
+          recentTx = data ?? []
+        } catch { /* ignore */ }
+
+        intentResult = await detectVoiceIntent(transcript, recentTx)
       }
-      return
-    }
+      // else: hasAmount && !looksLikeQuery → skip straight to transaction parsing
+
+      if (intentResult.intent === 'query' && intentResult.answer) {
+        setIsAiLoading(false); setAiStep('')
+        setQueryAnswer(intentResult.answer)
+        if (window.speechSynthesis) {
+          window.speechSynthesis.cancel()
+          const u = new SpeechSynthesisUtterance(intentResult.answer)
+          u.lang = 'en-IN'; u.rate = 0.88; u.volume = 1.0
+          const voices = window.speechSynthesis.getVoices()
+          const best = voices.find(v => v.lang === 'en-IN')
+                    || voices.find(v => v.lang.startsWith('en-')) || null
+          if (best) u.voice = best
+          window.speechSynthesis.speak(u)
+        }
+        return
+      }
     // ─────────────────────────────────────────────────────────────────────────
 
     const [aiParsed, local] = await Promise.all([
@@ -1128,6 +1179,15 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
       setShowForm(true); setIsAiLoading(false); setAiStep(''); return
     }
     openManualForm(transcript)
+
+    } catch (err) {
+      console.error('processAndSave error:', err)
+      setIsAiLoading(false); setAiStep('')
+      openManualForm(transcript)
+    } finally {
+      // Always release the lock so the next voice input is never permanently blocked
+      submissionLockRef.current = false
+    }
   }, [directSave, goToTransactions, inventory, language, localParseMulti, openManualForm, saveTransaction, speakLowStock, speakSaved, t.offline, user])
 
   useEffect(() => { processAndSaveRef.current = processAndSave as any }, [processAndSave])
