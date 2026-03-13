@@ -2,19 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── ZivaKhata Global Dark Theme ────────────────────────────────────────────
+   These CSS variables are the single source of truth for the color system.
+   Tailwind classes reference the tokens above; raw CSS can use these vars.     */
+:root {
+  --navy-950:   #060B19;
+  --navy-900:   #0A1128;
+  --navy-800:   #0F1A3E;
+  --navy-700:   #162050;
+  --navy-600:   #1E2D6B;
+  --cyan:       #00E5FF;
+  --cyan-dim:   #00B8CC;
+  --cyan-muted: rgba(0, 229, 255, 0.15);
+  --cyan-border: rgba(0, 229, 255, 0.25);
+  --text-primary:   #FFFFFF;
+  --text-secondary: #94A3B8;   /* slate-400 */
+  --text-muted:     #475569;   /* slate-600 */
+}
+
+/* ── Force dark background on every surface ───────────────────────────────── */
+html, body, #root {
+  background-color: var(--navy-900);
+  color: var(--text-primary);
+  min-height: 100%;
+}
+
+/* ── Scrollbar — dark + cyan thumb ───────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--navy-800); }
+::-webkit-scrollbar-thumb { background: var(--cyan-border); border-radius: 99px; }
+
+/* ── Mic button states ────────────────────────────────────────────────────── */
+
+/* Idle: cyan ring outline */
+.mic-idle {
+  box-shadow:
+    0 0 0 3px var(--cyan-border),
+    0 8px 32px rgba(0,0,0,0.5);
+}
+
+/* Listening: heavy cyan glow + Tailwind's animate-ziva-ping handles the ring  */
+.mic-listening {
+  box-shadow:
+    0 0 0 4px var(--cyan),
+    0 0 28px 6px rgba(0, 229, 255, 0.55),
+    0 0 56px 12px rgba(0, 229, 255, 0.25);
+}
+
+/* ── Slide-up animation (kept from original) ─────────────────────────────── */
 @layer utilities {
   @keyframes slide-up {
-    from {
-      transform: translateY(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0);
-      opacity: 1;
-    }
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
   }
-
-  .animate-slide-up {
-    animation: slide-up 0.3s ease-out;
-  }
+  .animate-slide-up { animation: slide-up 0.3s ease-out; }
 }

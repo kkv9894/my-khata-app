@@ -82,19 +82,12 @@ export interface PendingSaveResult {
   error?: string;
 }
 
-// ── Smart Inventory (Supabase-backed, business users only) ───────────────────
+// Supabase inventory table row
 export interface InventoryItem {
-  id: string;
-  user_id: string;
-  item_name: string;
-  quantity: number;
-  unit: string;        // 'kg' | 'packets' | 'pieces' | 'litres' | etc.
+  id:         string;
+  user_id:    string;
+  item_name:  string;
+  quantity:   number;
+  unit:       string;
   updated_at: string;
 }
-
-// Inventory voice action returned by analyzeInventoryIntent()
-export type InventoryAction =
-  | { action: 'ADD_STOCK';   item: string; quantity: number; unit: string }
-  | { action: 'SELL_STOCK';  item: string; quantity: number; unit: string; amount: number }
-  | { action: 'CHECK_STOCK'; item: string }
-  | { action: 'NONE' }

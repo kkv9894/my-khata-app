@@ -1,35 +1,35 @@
 ﻿import { useState, useEffect, useCallback, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Clock, Trash2, Search, SlidersHorizontal, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, Trash2, Search, SlidersHorizontal, X } from 'lucide-react';
 import { supabase, Transaction } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 type SupportedLanguage = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml'
 
 const CATEGORIES = [
-  { id: 'all',        emoji: '📋', color: 'bg-gray-900 text-white',     inactive: 'bg-white text-gray-600 border border-gray-200',     label: { en:'All',         hi:'सभी',       ta:'அனைத்தும்',   te:'అన్నీ',       kn:'ಎಲ್ಲಾ',    ml:'എല്ലാം'       }, keywords: [],          typeFilter: undefined as 'income'|'expense'|undefined },
-  { id: 'groceries',  emoji: '🛒', color: 'bg-green-600 text-white',    inactive: 'bg-white text-green-700 border border-green-200',    label: { en:'Groceries',   hi:'किराना',    ta:'மளிகை',       te:'కిరాణా',      kn:'ಕಿರಾಣಾ',   ml:'പലചരക്ക്'    }, typeFilter: undefined,
+  { id: 'all',        emoji: '📋', color: 'bg-gray-900 text-white',     inactive: 'bg-white text-slate-400 border border-gray-200',     label: { en:'All',         hi:'सभी',       ta:'அனைத்தும்',   te:'అన్నీ',       kn:'ಎಲ್ಲಾ',    ml:'എല്ലാം'       }, keywords: [],          typeFilter: undefined as 'income'|'expense'|undefined },
+  { id: 'groceries',  emoji: '🛒', color: 'bg-green-600 text-white',    inactive: 'bg-navy-800 text-green-400 border border-navy-600',    label: { en:'Groceries',   hi:'किराना',    ta:'மளிகை',       te:'కిరాణా',      kn:'ಕಿರಾಣಾ',   ml:'പലചരക്ക്'    }, typeFilter: undefined,
     keywords: ['rice','wheat','flour','dal','sugar','salt','oil','ghee','atta','maida','besan','arisi','paruppu','akki','biyyam','chawal','sabzi','sabji','grocery','groceries','provision','ration','toor','chana','urad','moong','sago','vermicelli','rava','sooji','semolina','starch','cornflour','bread','biscuit','noodles','pasta','cornflakes','oats','powder','masala','podi','pudi','haldi','turmeric','manjal','jeera','cumin','coriander','dhaniya','cinnamon','cardamom','cloves','saunf','fennel','ajwain','mustard','rai','kadugu','methi','fenugreek','tamarind','garam','spice','spices','chilli powder','mirchi powder','red chilli','green chilli'],
   },
-  { id: 'vegetables', emoji: '🥦', color: 'bg-emerald-600 text-white',  inactive: 'bg-white text-emerald-700 border border-emerald-200', label: { en:'Vegetables',  hi:'सब्जी',     ta:'காய்கறி',     te:'కూరగాయలు',    kn:'ತರಕಾರಿ',   ml:'പച്ചക്കറി'   }, typeFilter: undefined,
+  { id: 'vegetables', emoji: '🥦', color: 'bg-emerald-600 text-white',  inactive: 'bg-navy-800 text-emerald-400 border border-navy-600', label: { en:'Vegetables',  hi:'सब्जी',     ta:'காய்கறி',     te:'కూరగాయలు',    kn:'ತರಕಾರಿ',   ml:'പച്ചക്കറി'   }, typeFilter: undefined,
     keywords: ['tomato','thakkali','onion','vengayam','pyaz','ullipaya','eerulli','ulli','potato','urulai','aloo','batata','urulaikizhangu','carrot','gajar','beans','payar','cabbage','cauliflower','gobi','brinjal','katharikai','vankaya','spinach','keerai','cheera','palak','vegetable','veggie','mirchi','chilli','mulagu','mulak','pachi mirchi','pepper','drumstick','muringakka','okra','bendakaya','bendekayi','bitter gourd','pavakkai','pumpkin','bottlegourd','lauki','dudhi','yam','chena','colocasia','taro','drumstick','radish','mullangi','mooli','cucumber','vellarikkai','kakdi','beetroot','beetroot','celery','leek','spring onion','capsicum','shimla'],
   },
-  { id: 'fruits',     emoji: '🍎', color: 'bg-orange-500 text-white',   inactive: 'bg-white text-orange-600 border border-orange-200',   label: { en:'Fruits',      hi:'फल',        ta:'பழம்',         te:'పండ్లు',      kn:'ಹಣ್ಣು',    ml:'പഴം'         }, typeFilter: undefined,
+  { id: 'fruits',     emoji: '🍎', color: 'bg-orange-500 text-white',   inactive: 'bg-navy-800 text-orange-400 border border-navy-600',   label: { en:'Fruits',      hi:'फल',        ta:'பழம்',         te:'పండ్లు',      kn:'ಹಣ್ಣು',    ml:'പഴം'         }, typeFilter: undefined,
     keywords: ['apple','banana','mango','manga','orange','grape','papaya','pineapple','watermelon','guava','pomegranate','fruit','pazham','chakka','jackfruit','sapota','chikoo','lychee','strawberry','kiwi','dates','fig','coconut','thengai','tender coconut','pear','plum','peach','custard apple','sitaphal'],
   },
-  { id: 'fuel',       emoji: '⛽', color: 'bg-yellow-600 text-white',   inactive: 'bg-white text-yellow-700 border border-yellow-200',   label: { en:'Fuel',        hi:'ईंधन',      ta:'எரிபொருள்',   te:'ఇంధనం',       kn:'ಇಂಧನ',     ml:'ഇന്ധനം'      }, typeFilter: undefined,
+  { id: 'fuel',       emoji: '⛽', color: 'bg-yellow-600 text-white',   inactive: 'bg-navy-800 text-yellow-400 border border-navy-600',   label: { en:'Fuel',        hi:'ईंधन',      ta:'எரிபொருள்',   te:'ఇంధనం',       kn:'ಇಂಧನ',     ml:'ഇന്ധനം'      }, typeFilter: undefined,
     keywords: ['petrol','petrool','diesel','fuel','gas','cng','lpg','benzine','filling','bunk'],
   },
-  { id: 'food',       emoji: '🍽️', color: 'bg-red-500 text-white',     inactive: 'bg-white text-red-600 border border-red-200',         label: { en:'Food',        hi:'खाना',      ta:'சாப்பாடு',    te:'భోజనం',       kn:'ಊಟ',       ml:'ഭക്ഷണം'      }, typeFilter: undefined,
+  { id: 'food',       emoji: '🍽️', color: 'bg-red-500 text-white',     inactive: 'bg-navy-800 text-red-400 border border-navy-600',         label: { en:'Food',        hi:'खाना',      ta:'சாப்பாடு',    te:'భోజనం',       kn:'ಊಟ',       ml:'ഭക്ഷണം'      }, typeFilter: undefined,
     keywords: ['food','restaurant','hotel','cafe','coffee','tea','chai','juice','water','milk','paal','saapadu','sapadu','lunch','dinner','breakfast','snack','biryani','dosa','idli','tiffin','mess','canteen','sweets','mithai','parota','chapati','naan','roti','puri','vada','sambar','rasam','curry','kulambu','kuzhambu','chicken','mutton','fish','meen','egg','muttai','prawns','crab','biriyani','fried rice','noodles','pizza','burger','sandwich','ice cream','sweets','halwa','payasam','kheer','laddu','mysore pak','gulab jamun'],
   },
-  { id: 'medicine',   emoji: '💊', color: 'bg-blue-600 text-white',     inactive: 'bg-white text-blue-700 border border-blue-200',       label: { en:'Medicine',    hi:'दवाई',      ta:'மருந்து',     te:'మందు',        kn:'ಔಷಧ',      ml:'മരുന്ന്'      }, typeFilter: undefined,
+  { id: 'medicine',   emoji: '💊', color: 'bg-blue-600 text-white',     inactive: 'bg-navy-800 text-blue-400 border border-navy-600',       label: { en:'Medicine',    hi:'दवाई',      ta:'மருந்து',     te:'మందు',        kn:'ಔಷಧ',      ml:'മരുന്ന്'      }, typeFilter: undefined,
     keywords: ['medicine','tablet','capsule','syrup','injection','pharmacy','hospital','doctor','clinic','health','medical','marundu','marunthu','dawai','dawa','chemist','drug','aushadham','dakthar','nursing home','scan','xray','blood test','lab','operation','surgery','dental','eye','ear'],
   },
-  { id: 'transport',  emoji: '🚌', color: 'bg-purple-600 text-white',   inactive: 'bg-white text-purple-700 border border-purple-200',   label: { en:'Transport',   hi:'यातायात',   ta:'போக்குவரத்து',te:'రవాణా',       kn:'ಸಾರಿಗೆ',   ml:'ഗതാഗതം'      }, typeFilter: undefined,
+  { id: 'transport',  emoji: '🚌', color: 'bg-purple-600 text-white',   inactive: 'bg-navy-800 text-purple-400 border border-navy-600',   label: { en:'Transport',   hi:'यातायात',   ta:'போக்குவரத்து',te:'రవాణా',       kn:'ಸಾರಿಗೆ',   ml:'ഗതാഗതം'      }, typeFilter: undefined,
     keywords: ['bus','auto','taxi','cab','uber','ola','metro','train','ticket','travel','transport','fare','rickshaw','bike','vehicle','parking','toll','rapido','share auto','van','lorry','truck','flight','air','airport','railway','ksrtc','setc','tnstc'],
   },
-  { id: 'income',     emoji: '💰', color: 'bg-teal-600 text-white',     inactive: 'bg-white text-teal-700 border border-teal-200',       label: { en:'Income',      hi:'आमदनी',     ta:'வருமானம்',    te:'ఆదాయం',       kn:'ಆದಾಯ',     ml:'വരുമാനം'     }, keywords: [], typeFilter: 'income'  as 'income'|'expense'|undefined },
-  { id: 'expense',    emoji: '📤', color: 'bg-rose-600 text-white',     inactive: 'bg-white text-rose-700 border border-rose-200',       label: { en:'Expense',     hi:'खर्च',      ta:'செலவு',       te:'ఖర్చు',       kn:'ಖರ್ಚು',    ml:'ചെലവ്'       }, keywords: [], typeFilter: 'expense' as 'income'|'expense'|undefined },
+  { id: 'income',     emoji: '💰', color: 'bg-teal-600 text-white',     inactive: 'bg-navy-800 text-teal-400 border border-navy-600',       label: { en:'Income',      hi:'आमदनी',     ta:'வருமானம்',    te:'ఆదాయం',       kn:'ಆದಾಯ',     ml:'വരുമാനം'     }, keywords: [], typeFilter: 'income'  as 'income'|'expense'|undefined },
+  { id: 'expense',    emoji: '📤', color: 'bg-rose-600 text-white',     inactive: 'bg-navy-800 text-rose-400 border border-navy-600',       label: { en:'Expense',     hi:'खर्च',      ta:'செலவு',       te:'ఖర్చు',       kn:'ಖರ್ಚು',    ml:'ചെലവ്'       }, keywords: [], typeFilter: 'expense' as 'income'|'expense'|undefined },
 ]
 
 const detectCategory = (desc: string, type: string): string => {
@@ -120,26 +120,7 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
   const totalIncome  = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const totalExpense = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`
-
-  // ✅ NEW: formatDateTime — shows date + time using created_at (full ISO timestamp)
-  // Falls back to transaction_date (date only) if created_at is missing
-  const formatDateTime = (t: any): string => {
-    const raw = t.created_at || t.transaction_date
-    if (!raw) return '—'
-    const d = new Date(raw)
-    if (isNaN(d.getTime())) return raw
-    const isSameYear = d.getFullYear() === new Date().getFullYear()
-    const dateStr = d.toLocaleDateString('en-IN', {
-      day: 'numeric', month: 'short',
-      ...(isSameYear ? {} : { year: 'numeric' })
-    })
-    // Only show time if created_at has time info (not a bare date string)
-    const hasTime = raw.includes('T') || raw.includes(' ')
-    const timeStr = hasTime
-      ? d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-      : null
-    return timeStr ? `${dateStr}, ${timeStr}` : dateStr
-  }
+  const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
   if (loading) return (
     <div className="flex h-full items-center justify-center">
@@ -150,17 +131,17 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
   const activeCat = CATEGORIES.find(c => c.id === activeCategory) ?? CATEGORIES[0]
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-gray-50">
+    <div className="flex h-full flex-col overflow-hidden bg-navy-900">
 
       {/* Header */}
-      <div className="bg-white px-4 pt-4 pb-0 shadow-sm">
+      <div className="bg-navy-800 border-b border-navy-600 px-4 pt-4 pb-0">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-black text-gray-900">History</h2>
+          <h2 className="text-lg font-black text-white">History</h2>
           <div className="flex items-center gap-2">
             {/* Manual refresh button */}
             <button
               onClick={() => void loadTransactions()}
-              className="rounded-xl p-2 bg-gray-100 text-gray-600 active:bg-gray-200"
+              className="rounded-xl p-2 bg-gray-100 text-slate-400 active:bg-gray-200"
               title="Refresh"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -169,7 +150,7 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
             </button>
             <button
               onClick={() => { setShowSearch(v => !v); setSearchText('') }}
-              className={`rounded-xl p-2 transition-all ${showSearch ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'}`}
+              className={`rounded-xl p-2 transition-all ${showSearch ? 'bg-cyan text-navy-950' : 'bg-gray-100 text-slate-400'}`}
             >
               {showSearch ? <X size={16} /> : <Search size={16} />}
             </button>
@@ -177,16 +158,16 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
         </div>
 
         {showSearch && (
-          <div className="mb-3 flex items-center gap-2 rounded-2xl bg-gray-100 px-4 py-2">
-            <Search size={14} className="text-gray-400 shrink-0" />
+          <div className="mb-3 flex items-center gap-2 rounded-2xl bg-navy-800 border border-navy-600 px-4 py-2">
+            <Search size={14} className="text-slate-400 shrink-0" />
             <input
               autoFocus
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               placeholder="Search by item, amount..."
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
             />
-            {searchText && <button onClick={() => setSearchText('')}><X size={14} className="text-gray-400" /></button>}
+            {searchText && <button onClick={() => setSearchText('')}><X size={14} className="text-slate-400" /></button>}
           </div>
         )}
 
@@ -225,9 +206,9 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
             </div>
           </div>
           <div className="flex flex-1 items-center gap-2 rounded-2xl bg-gray-100 px-3 py-2">
-            <SlidersHorizontal size={14} className="text-gray-500" />
+            <SlidersHorizontal size={14} className="text-slate-400" />
             <div>
-              <p className="text-[9px] font-black uppercase text-gray-500">Net</p>
+              <p className="text-[9px] font-black uppercase text-slate-400">Net</p>
               <p className={`text-sm font-black ${totalIncome - totalExpense >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                 {fmt(Math.abs(totalIncome - totalExpense))}
               </p>
@@ -241,8 +222,8 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="mb-3 text-4xl">{activeCat.emoji}</div>
-            <p className="font-bold text-gray-500">No {(activeCat.label as Record<string, string>)[lang] ?? (activeCat.label as Record<string, string>)['en']} transactions</p>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="font-bold text-slate-400">No {(activeCat.label as Record<string, string>)[lang] ?? (activeCat.label as Record<string, string>)['en']} transactions</p>
+            <p className="mt-1 text-xs text-slate-400">
               {searchText ? `No results for "${searchText}"` : 'Use the mic to add one'}
             </p>
           </div>
@@ -260,12 +241,12 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
                       {cat.emoji}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-900 leading-tight">
+                      <p className="font-bold text-white leading-tight">
                         {t.description || 'Voice entry'}
                       </p>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                        <Clock size={10} className="text-gray-300" />
-                        <span className="text-[11px] text-gray-400">{formatDateTime(t)}</span>
+                        <Calendar size={10} className="text-gray-300" />
+                        <span className="text-[11px] text-slate-400">{formatDate(t.transaction_date)}</span>
                         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${
                           t.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
                         }`}>{(cat.label as Record<string, string>)[lang] ?? (cat.label as Record<string, string>)['en']}</span>

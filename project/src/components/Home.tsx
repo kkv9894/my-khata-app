@@ -1,9 +1,9 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, AlertTriangle, Brain, CheckCircle, FileBarChart, LayoutDashboard, Loader2, MessageSquare, Mic, Package, ScanLine, ShieldCheck, TrendingUp, Users, Zap } from 'lucide-react'
+import { Activity, AlertTriangle, Brain, CheckCircle, FileBarChart, LayoutDashboard, Loader2, MessageSquare, Mic, Package, ScanLine, Settings2, ShieldCheck, TrendingUp, Users, Zap } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useRole } from '../contexts/RoleContext'
 import { supabase } from '../lib/supabase'
-import { analyzeTransaction, detectVoiceIntent, isFillerOnly } from '../lib/gemini'
+import { analyzeTransaction, detectVoiceIntent } from '../lib/gemini'
 import useOfflineSync, { type TransactionPayload } from '../hooks/useOfflineSync'
 import useVoiceRecorder, { type SttConfidence } from '../hooks/useVoiceRecorder'
 import AiChat from './AiChat'
@@ -15,10 +15,11 @@ import Reports from './Reports'
 import StaffManager from './StaffManager'
 import TransactionForm from './TransactionForm'
 import TransactionList from './TransactionList'
+import Settings from './Settings'
 
 type SupportedLanguage = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml'
 type TransactionType   = 'income' | 'expense'
-type Tab = 'home' | 'transactions' | 'dashboard' | 'reports' | 'chat' | 'customers' | 'insights' | 'staff'
+type Tab = 'home' | 'transactions' | 'dashboard' | 'reports' | 'chat' | 'customers' | 'insights' | 'staff' | 'settings'
 
 interface TransactionDraft {
   amount: string
@@ -28,12 +29,12 @@ interface TransactionDraft {
 }
 
 const T: Record<SupportedLanguage, Record<string, string>> = {
-  en: { hold: 'Hold to Speak', ai: 'Processing...', saved: 'Saved!', mic_error: 'Mic Access Denied', offline: 'Offline Save', too_fast: 'Please wait...', speak_hint: 'Speak now...' },
-  hi: { hold: 'दबाकर बोलें', ai: 'प्रोसेसिंग...', saved: 'सेव हो गया!', mic_error: 'माइक एक्सेस नहीं', offline: 'ऑफलाइन सेव', too_fast: 'थोड़ा इंतज़ार करें...', speak_hint: 'अब बोलें...' },
-  ta: { hold: 'பேச அழுத்துங்கள்', ai: 'செயலாக்கம்...', saved: 'சேமிக்கப்பட்டது!', mic_error: 'மைக் அனுமதி இல்லை', offline: 'ஆஃப்லைன் சேமிப்பு', too_fast: 'சிறிது காத்திருக்கவும்...', speak_hint: 'இப்போது பேசுங்கள்...' },
-  te: { hold: 'పట్టుకోండి', ai: 'ప్రాసెసింగ్...', saved: 'సేవ్!', mic_error: 'మైక్ అనుమతి లేదు', offline: 'ఆఫ్‌లైన్ సేవ్', too_fast: 'కొంచెం ఆగండి...', speak_hint: 'ఇప్పుడు మాట్లాడండి...' },
-  kn: { hold: 'ಒತ್ತಿಹಿಡಿಯಿರಿ', ai: 'ಪ್ರಕ್ರಿಯೆ...', saved: 'ಉಳಿಸಲಾಗಿದೆ!', mic_error: 'ಮೈಕ್ ಅನುಮತಿ ಇಲ್ಲ', offline: 'ಆಫ್‌ಲೈನ್ ಉಳಿಕೆ', too_fast: 'ಸ್ವಲ್ಪ ಕಾಯಿರಿ...', speak_hint: 'ಈಗ ಮಾತನಾಡಿ...' },
-  ml: { hold: 'അമർത്തുക', ai: 'പ്രോസസ്സിംഗ്...', saved: 'സേവ് ചെയ്തു!', mic_error: 'മൈക്ക് അനുമതിയില്ല', offline: 'ഓഫ്‌ലൈൻ സേവ്', too_fast: 'കാത്തിരിക്കൂ...', speak_hint: 'ഇപ്പോൾ സംസാരിക്കുക...' },
+  en: { hold: 'Tap to speak to Ziva', ai: '✨ Ziva is thinking...', saved: 'Ziva saved it!', mic_error: 'Mic Access Denied', offline: 'Offline Save', too_fast: 'Please wait...', speak_hint: '🎙️ Ziva is listening...' },
+  hi: { hold: 'Ziva से बात करें', ai: '✨ Ziva सोच रही है...', saved: 'Ziva ने save किया!', mic_error: 'माइक एक्सेस नहीं', offline: 'ऑफलाइन सेव', too_fast: 'थोड़ा इंतज़ार करें...', speak_hint: '🎙️ Ziva सुन रही है...' },
+  ta: { hold: 'Ziva-கிட்ட பேசுங்க', ai: '✨ Ziva யோசிக்கிறா...', saved: 'Ziva save பண்ணாச்சு!', mic_error: 'மைக் அனுமதி இல்லை', offline: 'ஆஃப்லைன் சேமிப்பு', too_fast: 'சிறிது காத்திருக்கவும்...', speak_hint: '🎙️ Ziva கேக்கிறா...' },
+  te: { hold: 'Ziva తో మాట్లాడండి', ai: '✨ Ziva ఆలోచిస్తోంది...', saved: 'Ziva save చేసింది!', mic_error: 'మైక్ అనుమతి లేదు', offline: 'ఆఫ్‌లైన్ సేవ్', too_fast: 'కొంచెం ఆగండి...', speak_hint: '🎙️ Ziva వింటోంది...' },
+  kn: { hold: 'Ziva ಜೊತೆ ಮಾತಾಡಿ', ai: '✨ Ziva ಯೋಚಿಸುತ್ತಿದ್ದಾಳೆ...', saved: 'Ziva save ಮಾಡಿದಳು!', mic_error: 'ಮೈಕ್ ಅನುಮತಿ ಇಲ್ಲ', offline: 'ಆಫ್‌ಲೈನ್ ಉಳಿಕೆ', too_fast: 'ಸ್ವಲ್ಪ ಕಾಯಿರಿ...', speak_hint: '🎙️ Ziva ಕೇಳುತ್ತಿದ್ದಾಳೆ...' },
+  ml: { hold: 'Ziva-യോട് സംസാരിക്കൂ', ai: '✨ Ziva ചിന്തിക്കുന്നു...', saved: 'Ziva save ചെയ്തു!', mic_error: 'മൈക്ക് അനുമതിയില്ല', offline: 'ഓഫ്‌ലൈൻ സേവ്', too_fast: 'കാത്തിരിക്കൂ...', speak_hint: '🎙️ Ziva കേൾക്കുന്നു...' },
 }
 
 // ── Income keywords ───────────────────────────────────────────────────────────
@@ -706,10 +707,11 @@ const MORE_TABS = [
   { tab: 'customers' as Tab, icon: <Users size={16} />,        label: 'Udhaar'   },
   { tab: 'insights'  as Tab, icon: <Brain size={16} />,        label: 'Insights' },
   { tab: 'staff'     as Tab, icon: <ShieldCheck size={16} />,  label: 'Staff'    },
+  { tab: 'settings'  as Tab, icon: <Settings2 size={16} />,    label: 'Settings' },
 ]
 
 // ─── Component ─────────────────────────────────────────────────────────────────
-export default function Home({ language = 'en' }: { language?: SupportedLanguage }) {
+export default function Home({ language = 'en', setLanguage }: { language?: SupportedLanguage; setLanguage?: (l: SupportedLanguage) => void }) {
   const { user }   = useAuth()
   const accountType = (user?.user_metadata?.account_type ?? 'business') as 'personal' | 'business'
   const roleCtx    = useRole()
@@ -749,10 +751,6 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
   const t = T[language] ?? T.en
 
   const processAndSaveRef = useRef<(transcript: string, confidence: SttConfidence) => Promise<void>>(async () => {})
-  // Ref-based lock — synchronous, immune to React state-batching gaps.
-  // Prevents the one-render-cycle window where isBusy could briefly be false
-  // between isVoiceBusy→false (end of STT) and setIsAiLoading(true) (start of save).
-  const submissionLockRef = useRef(false)
 
   const {
     isRecording, isProcessing: isVoiceBusy,
@@ -760,7 +758,10 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
     startRecording, stopRecording,
   } = useVoiceRecorder({
     language,
-    // Keys removed — STT calls go through /api/stt/* serverless routes.
+    sarvamKey:       import.meta.env.VITE_SARVAM_API_KEY      ?? '',
+    googleKey:       import.meta.env.VITE_GOOGLE_STT_KEY      ?? '',
+    googleProjectId: import.meta.env.VITE_GOOGLE_PROJECT_ID   ?? '',
+    elevenLabsKey:   import.meta.env.VITE_ELEVENLABS_API_KEY  ?? '',
     onTranscript: (transcript: string, confidence: SttConfidence) => {
       void processAndSaveRef.current(sanitize(transcript), confidence)
     },
@@ -782,7 +783,7 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
       .catch(() => {})
   }, [])
 
-  // ── F3: Soundbox — speak rich confirmation in clear, TTS-friendly phrases ──
+  // ── F3: Soundbox — Ziva speaks confirmation in clear, TTS-friendly phrases ──
   // DESIGN: Indian language TTS on iOS/Android is robotic and unclear for native script.
   // Solution: Use Romanized/transliterated short phrases with English numbers.
   // Amounts ALWAYS in English digits (₹ sign causes TTS to say "rupee sign" on some devices).
@@ -795,15 +796,15 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
     const phrase = (() => {
       if (desc && amount) {
         switch (language) {
-          case 'hi': return `${amtStr} ${desc} save ho gaya`        // Romanized Hinglish — clear on all TTS
-          case 'ta': return `${amtStr} ${desc} semiikkapattadu`     // Romanized Tanglish
-          case 'te': return `${amtStr} ${desc} save ayyindi`        // Romanized Telugu
-          case 'kn': return `${amtStr} ${desc} save aayitu`         // Romanized Kannada
-          case 'ml': return `${amtStr} ${desc} save cheythu`        // Romanized Malayalam
-          default:   return `${amtStr} saved for ${desc}`
+          case 'hi': return `Ziva ne ${amtStr} ${desc} save kar liya`   // Romanized Hinglish
+          case 'ta': return `Ziva ${amtStr} ${desc} save pannaachu`      // Romanized Tanglish
+          case 'te': return `Ziva ${amtStr} ${desc} save chesindi`       // Romanized Telugu
+          case 'kn': return `Ziva ${amtStr} ${desc} save maadidlu`       // Romanized Kannada
+          case 'ml': return `Ziva ${amtStr} ${desc} save cheythu`        // Romanized Malayalam
+          default:   return `Ziva saved ${amtStr} for ${desc}`
         }
       }
-      return t.saved
+      return language === 'en' ? 'Ziva saved it!' : t.saved
     })()
 
     const sayIt = () => {
@@ -1004,95 +1005,47 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
   // ── Core: voice transcript → Smart Clerk query OR parse → save ──────────────
   const processAndSave = useCallback(async (transcript: string, confidence: SttConfidence = 'high') => {
     console.log('🎤 Transcript:', `"${transcript}"`)
-
-    // ── Submission lock — prevents duplicate saves from double-tap or re-entrant calls ──
-    // Synchronous ref check: immune to React state-batching gaps where isBusy
-    // could flicker false for one render cycle between STT end and AI start.
-    if (submissionLockRef.current) {
-      console.log('🔒 Submission already in flight — ignored')
-      return
-    }
-    submissionLockRef.current = true
-
-    // ── Filler-word guard — short-circuit before ANY API call ─────────────────
-    // If the STT returned only conversational noise (matthe / aur / appuram / umm),
-    // discard instantly — no Supabase, no Gemini, no UI side-effects.
-    if (!transcript || isFillerOnly(transcript)) {
-      console.log('🗑️ Filler-only transcript — discarded:', `"${transcript}"`)
-      submissionLockRef.current = false
-      return
-    }
-
-    if (!user?.id) {
-      submissionLockRef.current = false
-      openManualForm(transcript)
-      return
-    }
+    if (!transcript) { setErrorMsg('Could not hear clearly. Try again.'); setIsAiLoading(false); setAiStep(''); return }
+    if (!user?.id) { openManualForm(transcript); return }
 
     const sttConf = confidence
     setIsAiLoading(true); setAiStep('Understanding...')
     setQueryAnswer(null) // clear any previous query answer
 
+    // ── F1: Smart Clerk — detect if this is a question or a transaction ────
+    // Load recent transactions for query context (lightweight: last 100)
+    let recentTx: any[] = []
     try {
-      // ── Fast path: skip Supabase fetch + detectVoiceIntent for clear transactions ──
-      // 90%+ of shopkeeper inputs have a number (amount/qty) and no question words.
-      // Skipping the Supabase 100-tx fetch + optional Gemini query call saves ~1-3s.
-      const QUERY_SIGNALS = [
-        'how much','how many','total','balance','summary','report','profit','who owes',
-        'what is','what are','show me','tell me','best selling','compare',
-        // Tamil/Tanglish
-        'evvalavu','mottam','yaaru','solunga',
-        // Hindi
-        'kitna','kul','batao','kitne','report',
-        // Kannada
-        'eshtu','otthu','yaaru','heli',
-        // Telugu
-        'enta','mottam','cheppandi',
-        // Malayalam
-        'ethra','aake','parayo',
-      ]
-      const lo = transcript.toLowerCase()
-      const looksLikeQuery = QUERY_SIGNALS.some(s => lo.includes(s))
-      const hasAmount = /\d{2,}/.test(transcript)  // 2+ digits = almost certainly an amount
+      const { data } = await supabase
+        .from('transactions')
+        .select('type, amount, description, transaction_date')
+        .eq('user_id', user.id)
+        .order('transaction_date', { ascending: false })
+        .limit(100)
+      recentTx = data ?? []
+    } catch { /* ignore — query answering will have less context */ }
 
-      let intentResult: { intent: 'query' | 'transaction'; answer?: string } = { intent: 'transaction' }
-
-      if (looksLikeQuery || !hasAmount) {
-        // Load context and run intent detection only when needed
-        let recentTx: any[] = []
-        try {
-          const { data } = await supabase
-            .from('transactions')
-            .select('type, amount, description, transaction_date')
-            .eq('user_id', user.id)
-            .order('transaction_date', { ascending: false })
-            .limit(100)
-          recentTx = data ?? []
-        } catch { /* ignore */ }
-
-        intentResult = await detectVoiceIntent(transcript, recentTx)
+    const intent = await detectVoiceIntent(transcript, recentTx)
+    if (intent.intent === 'query' && intent.answer) {
+      setIsAiLoading(false); setAiStep('')
+      setQueryAnswer(intent.answer)
+      // Speak the answer aloud — en-IN for clear pronunciation
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel()
+        const u = new SpeechSynthesisUtterance(intent.answer)
+        u.lang = 'en-IN'; u.rate = 0.88; u.volume = 1.0
+        const voices = window.speechSynthesis.getVoices()
+        const best = voices.find(v => v.lang === 'en-IN')
+                  || voices.find(v => v.lang.startsWith('en-')) || null
+        if (best) u.voice = best
+        window.speechSynthesis.speak(u)
       }
-      // else: hasAmount && !looksLikeQuery → skip straight to transaction parsing
-
-      if (intentResult.intent === 'query' && intentResult.answer) {
-        setIsAiLoading(false); setAiStep('')
-        setQueryAnswer(intentResult.answer)
-        if (window.speechSynthesis) {
-          window.speechSynthesis.cancel()
-          const u = new SpeechSynthesisUtterance(intentResult.answer)
-          u.lang = 'en-IN'; u.rate = 0.88; u.volume = 1.0
-          const voices = window.speechSynthesis.getVoices()
-          const best = voices.find(v => v.lang === 'en-IN')
-                    || voices.find(v => v.lang.startsWith('en-')) || null
-          if (best) u.voice = best
-          window.speechSynthesis.speak(u)
-        }
-        return
-      }
+      return
+    }
     // ─────────────────────────────────────────────────────────────────────────
 
     const [aiParsed, local] = await Promise.all([
-      analyzeTransaction(transcript).catch(() => null),
+      analyzeTransaction(transcript, accountType).catch(() => null),
       Promise.resolve(localParse(transcript)),
     ])
 
@@ -1179,15 +1132,6 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
       setShowForm(true); setIsAiLoading(false); setAiStep(''); return
     }
     openManualForm(transcript)
-
-    } catch (err) {
-      console.error('processAndSave error:', err)
-      setIsAiLoading(false); setAiStep('')
-      openManualForm(transcript)
-    } finally {
-      // Always release the lock so the next voice input is never permanently blocked
-      submissionLockRef.current = false
-    }
   }, [directSave, goToTransactions, inventory, language, localParseMulti, openManualForm, saveTransaction, speakLowStock, speakSaved, t.offline, user])
 
   useEffect(() => { processAndSaveRef.current = processAndSave as any }, [processAndSave])
@@ -1202,7 +1146,7 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
+    <div className="flex h-screen flex-col overflow-hidden bg-navy-900">
       <div className="relative flex-1 overflow-y-auto pt-16">
 
         {/* Offline sync badge */}
@@ -1218,13 +1162,13 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
 
             {/* AI loading overlay */}
             {isBusy && (
-              <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-white/90 backdrop-blur-md">
-                <Loader2 className="mb-4 animate-spin text-black" size={42} />
-                <p className="text-[10px] font-black uppercase tracking-widest">
+              <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-navy-900/95 backdrop-blur-md">
+                <Loader2 className="mb-4 animate-spin text-cyan" size={42} />
+                <p className="text-[10px] font-black uppercase tracking-widest text-white">
                   {processingStep || aiStep || t.ai}
                 </p>
                 {providerUsed && (
-                  <p className="mt-1 text-[9px] uppercase tracking-widest text-gray-400">{providerUsed}</p>
+                  <p className="mt-1 text-[9px] uppercase tracking-widest text-slate-400">{providerUsed}</p>
                 )}
               </div>
             )}
@@ -1248,20 +1192,20 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
             )}
 
             {/* Live transcript card — doubles as Smart Clerk answer display */}
-            <div className={`w-full max-w-xs rounded-3xl border-2 bg-white p-6 transition-all ${
-              isRecording ? 'border-red-400 shadow-xl' : queryAnswer ? 'border-blue-300 shadow-lg' : 'border-gray-100'
+            <div className={`w-full max-w-xs rounded-3xl border-2 bg-navy-800 p-6 transition-all ${
+              isRecording ? 'border-cyan shadow-cyan-glow' : queryAnswer ? 'border-cyan/40 shadow-lg' : 'border-navy-600'
             }`}>
               {queryAnswer ? (
                 <div className="space-y-2">
-                  <p className="text-center text-[10px] font-black uppercase tracking-widest text-blue-400">Smart Clerk</p>
-                  <p className="text-center text-sm font-semibold text-gray-800 leading-relaxed">{queryAnswer}</p>
+                  <p className="text-center text-[10px] font-black uppercase tracking-widest text-cyan">✨ Ziva</p>
+                  <p className="text-center text-sm font-semibold text-white leading-relaxed">{queryAnswer}</p>
                   <button
                     onClick={() => setQueryAnswer(null)}
-                    className="mx-auto block text-[10px] font-bold text-gray-400 uppercase tracking-widest"
+                    className="mx-auto block text-[10px] font-bold text-slate-400 uppercase tracking-widest"
                   >✕ Dismiss</button>
                 </div>
               ) : (
-                <p className="text-center text-sm font-semibold text-gray-700">
+                <p className="text-center text-sm font-semibold text-slate-300">
                   {isRecording ? (liveText || t.speak_hint) : t.hold}
                 </p>
               )}
@@ -1283,7 +1227,7 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
               <div className="flex w-full max-w-xs flex-wrap gap-1.5 justify-center">
                 {Object.values(inventory).slice(0, 5).map(item => (
                   <div key={item.name} className={`flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-black ${
-                    item.qty <= 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
+                    item.qty <= 0 ? 'bg-red-900/50 text-red-400' : 'bg-navy-700 text-slate-300'
                   }`}>
                     <span>{item.name}</span>
                     <span className="opacity-60">{item.qty}{item.unit}</span>
@@ -1293,36 +1237,44 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
             )}
 
             {/* Mic button */}
-            <button
-              onMouseDown={handleHoldStart} onMouseUp={handleHoldEnd} onMouseLeave={handleHoldEnd}
-              onTouchStart={handleHoldStart} onTouchEnd={handleHoldEnd} onTouchCancel={handleHoldEnd}
-              disabled={isBusy || rateLimited}
-              className={`flex h-48 w-48 touch-none select-none items-center justify-center rounded-full shadow-2xl transition-all
-                ${isRecording ? 'scale-110 bg-red-600' : 'bg-black active:scale-95'}
-                ${isBusy || rateLimited ? 'opacity-60' : ''}`}
-            >
-              <Mic size={64} color="white" />
-            </button>
+            <div className="relative flex items-center justify-center">
+              {/* Pulsating ring — only shown while listening */}
+              {isRecording && (
+                <span className="absolute inline-flex h-48 w-48 rounded-full bg-cyan/20 animate-ziva-ping" />
+              )}
+              <button
+                onMouseDown={handleHoldStart} onMouseUp={handleHoldEnd} onMouseLeave={handleHoldEnd}
+                onTouchStart={handleHoldStart} onTouchEnd={handleHoldEnd} onTouchCancel={handleHoldEnd}
+                disabled={isBusy || rateLimited}
+                className={`relative flex h-48 w-48 touch-none select-none items-center justify-center rounded-full transition-all
+                  ${isRecording
+                    ? 'scale-110 bg-navy-800 mic-listening'
+                    : 'bg-navy-800 mic-idle active:scale-95'}
+                  ${isBusy || rateLimited ? 'opacity-60' : ''}`}
+              >
+                <Mic size={64} color="#00E5FF" />
+              </button>
+            </div>
 
             {/* Action row: Scan Receipt + End-of-Day P&L */}
             <div className="flex gap-3">
               <button
                 onClick={() => setShowScanner(true)}
-                className="flex items-center gap-2 rounded-2xl border-2 border-gray-100 bg-white px-5 py-3 shadow-sm active:scale-95"
+                className="flex items-center gap-2 rounded-2xl border-2 border-navy-600 bg-navy-800 px-5 py-3 shadow-sm active:scale-95"
               >
-                <ScanLine size={18} className="text-gray-600" />
-                <span className="text-sm font-bold text-gray-600">Scan Bill</span>
+                <ScanLine size={18} className="text-cyan" />
+                <span className="text-sm font-bold text-slate-300">Scan Bill</span>
               </button>
 
               <button
                 onClick={() => void speakPnL()}
                 disabled={pnlLoading}
-                className="flex items-center gap-2 rounded-2xl bg-black px-5 py-3 shadow-sm active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-2xl bg-cyan px-5 py-3 shadow-cyan-glow active:scale-95 disabled:opacity-50"
               >
                 {pnlLoading
-                  ? <Loader2 size={18} className="animate-spin text-white" />
-                  : <Zap size={18} className="text-white" />}
-                <span className="text-sm font-bold text-white">Today's P&L</span>
+                  ? <Loader2 size={18} className="animate-spin text-navy-950" />
+                  : <Zap size={18} className="text-navy-950" />}
+                <span className="text-sm font-bold text-navy-950">Today's P&L</span>
               </button>
             </div>
 
@@ -1346,10 +1298,11 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
         {activeTab === 'customers'    && <Customers language={language} />}
         {activeTab === 'insights'     && <BusinessInsights />}
         {activeTab === 'staff'        && <StaffManager />}
+        {activeTab === 'settings'     && <Settings language={language} setLanguage={setLanguage ?? (() => {})} />}
       </div>
 
       {/* Bottom nav */}
-      <nav className="mx-4 mb-6 flex justify-around rounded-[2.5rem] border border-gray-100 bg-white/90 p-2 shadow-2xl backdrop-blur-md">
+      <nav className="mx-4 mb-6 flex justify-around rounded-[2.5rem] border border-navy-600 bg-navy-800/90 p-2 shadow-2xl backdrop-blur-md">
         {([
           ['home',         <Mic size={22} />],
           ['transactions', <TrendingUp size={22} />],
@@ -1360,12 +1313,11 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
             key={tab}
             onClick={() => {
               if (tab === 'transactions') {
-                // Always bump refreshKey when manually tapping History tab
                 setRefreshKey(k => k + 1)
               }
               setActiveTab(tab)
             }}
-            className={`rounded-full p-4 ${activeTab === tab ? 'bg-black text-white' : 'text-gray-400'}`}
+            className={`rounded-full p-4 transition-all ${activeTab === tab ? 'bg-cyan text-navy-950 shadow-cyan-glow' : 'text-slate-400'}`}
           >
             {icon}
           </button>
@@ -1375,7 +1327,7 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
           <div className="relative">
             <button
               onClick={() => setShowMoreMenu(v => !v)}
-              className={`rounded-full p-4 ${MORE_TABS.some(m => m.tab === activeTab) ? 'bg-black text-white' : 'text-gray-400'}`}
+              className={`rounded-full p-4 transition-all ${MORE_TABS.some(m => m.tab === activeTab) ? 'bg-cyan text-navy-950 shadow-cyan-glow' : 'text-slate-400'}`}
             >
               <Brain size={22} />
             </button>
@@ -1387,15 +1339,15 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
       {showMoreMenu && (
         <>
           <div className="fixed inset-0 z-[190]" onClick={() => setShowMoreMenu(false)} />
-          <div className="fixed bottom-24 right-6 z-[200] w-52 overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-2xl">
-            <p className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-widest text-gray-400">More Features</p>
+          <div className="fixed bottom-24 right-6 z-[200] w-52 overflow-hidden rounded-3xl border border-navy-600 bg-navy-800 shadow-2xl">
+            <p className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">More Features</p>
             {MORE_TABS.map(({ tab, icon, label }) => (
               <button
                 key={tab}
                 onTouchStart={() => { setActiveTab(tab); setShowMoreMenu(false) }}
                 onClick={() => { setActiveTab(tab); setShowMoreMenu(false) }}
-                className={`flex w-full items-center gap-3 px-4 py-3.5 text-sm font-bold active:bg-gray-100 ${
-                  activeTab === tab ? 'bg-black text-white' : 'text-gray-700'
+                className={`flex w-full items-center gap-3 px-4 py-3.5 text-sm font-bold active:bg-navy-700 ${
+                  activeTab === tab ? 'bg-cyan text-navy-950' : 'text-slate-300'
                 }`}
               >
                 {icon} {label}
@@ -1424,7 +1376,6 @@ export default function Home({ language = 'en' }: { language?: SupportedLanguage
         <ReceiptScanner
           onClose={() => setShowScanner(false)}
           onSaved={() => { goToTransactions() }}
-          accountType={accountType}
         />
       )}
 

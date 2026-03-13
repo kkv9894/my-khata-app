@@ -3,7 +3,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { RoleProvider, useRole } from './contexts/RoleContext';
 import Auth from './components/Auth';
 import Home from './components/Home';
-import { Wallet, LogOut, Loader2 } from 'lucide-react';
+import { LogOut, Loader2 } from 'lucide-react';
+import { getBrandName, speakWelcome } from './lib/brand';
 
 // ✅ BLINK FIX: Unregister ALL service workers immediately when this module loads.
 // The old SW had skipWaiting() + clients.claim() which forced page reloads on every
@@ -28,28 +29,38 @@ interface AuthenticatedAppProps {
 function AuthenticatedApp({ language, setLanguage }: AuthenticatedAppProps) {
   const { user, signOut } = useAuth();
   const { shopName, isStaff } = useRole();
+  const brandName = getBrandName(language);
 
   return (
-    <div className="h-screen flex flex-col bg-white font-sans overflow-hidden">
+    <div className="h-screen flex flex-col bg-navy-900 font-sans overflow-hidden">
 
-      {/* Fixed Header */}
-      <div className="fixed top-0 left-0 right-0 z-[100] bg-white/80 backdrop-blur-xl border-b border-gray-100 px-4 py-3">
+      {/* ── Fixed Header — dark glass ─────────────────────────────────────── */}
+      <div className="fixed top-0 left-0 right-0 z-[100] border-b border-navy-600 bg-navy-900/90 backdrop-blur-xl px-4 py-3">
         <div className="flex justify-between items-center">
 
+          {/* Left: logo + brand + shop info */}
           <div className="flex items-center gap-3 min-w-0">
-            <div className="bg-black p-2 rounded-xl shadow-lg shrink-0">
-              <Wallet size={18} color="white" />
-            </div>
+            {/* Logo — served from /public/logo.png */}
+            <img
+              src="/logo.png"
+              alt="ZivaKhata"
+              className="h-9 w-9 rounded-xl object-cover shrink-0 shadow-cyan-glow"
+            />
             <div className="min-w-0">
-              <span className="font-black text-base tracking-tighter text-black block leading-tight">
+              {/* Brand name row */}
+              <span className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan block leading-none mb-0.5">
+                {brandName}
+              </span>
+              {/* Shop name */}
+              <span className="font-bold text-sm tracking-tight text-white block leading-tight truncate max-w-[150px]">
                 {shopName}
               </span>
-              <div className="flex items-center gap-2">
-                <p className="text-[10px] text-gray-400 font-semibold truncate max-w-[120px]">
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-[10px] text-slate-400 font-semibold truncate max-w-[120px]">
                   {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
                 </p>
                 {isStaff && (
-                  <span className="text-[8px] font-black uppercase bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full tracking-widest">
+                  <span className="text-[8px] font-black uppercase bg-cyan-muted text-cyan px-1.5 py-0.5 rounded-full tracking-widest border border-cyan-border">
                     Staff
                   </span>
                 )}
@@ -57,11 +68,12 @@ function AuthenticatedApp({ language, setLanguage }: AuthenticatedAppProps) {
             </div>
           </div>
 
+          {/* Right: language picker + sign out */}
           <div className="flex items-center gap-2 shrink-0">
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value as Lang)}
-              className="bg-gray-100 border-none rounded-xl px-3 py-2 text-xs font-black text-gray-700 outline-none cursor-pointer"
+              className="bg-navy-800 border border-navy-600 rounded-xl px-3 py-2 text-xs font-black text-slate-300 outline-none cursor-pointer focus:border-cyan"
             >
               <option value="en">English</option>
               <option value="hi">हिंदी</option>
@@ -72,7 +84,7 @@ function AuthenticatedApp({ language, setLanguage }: AuthenticatedAppProps) {
             </select>
             <button
               onClick={() => signOut()}
-              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+              className="p-2 text-slate-400 hover:text-cyan hover:bg-cyan-muted rounded-lg transition-all"
               title="Sign Out"
             >
               <LogOut size={18} />
@@ -99,10 +111,11 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-navy-900 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="animate-spin text-black" size={40} />
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">
+          <img src="/logo.png" alt="ZivaKhata" className="w-16 h-16 rounded-2xl shadow-cyan-glow animate-pulse" />
+          <Loader2 className="animate-spin text-cyan" size={32} />
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
             Verifying Session
           </p>
         </div>
@@ -112,16 +125,19 @@ function AppContent() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-white">
-        <div className="p-6 flex items-center gap-2">
-          <div className="bg-black p-2 rounded-xl shadow-lg">
-            <Wallet size={20} color="white" />
-          </div>
-          <span className="font-black text-xl tracking-tighter text-black">My Khata</span>
-        </div>
+      <div className="min-h-screen bg-navy-900">
         <Auth language={language} />
       </div>
     );
+  }
+
+  // Speak welcome once per session after login
+  if (typeof window !== 'undefined') {
+    const key = `ziva_welcomed_${language}`
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, '1')
+      setTimeout(() => speakWelcome(language as any), 800)
+    }
   }
 
   return (

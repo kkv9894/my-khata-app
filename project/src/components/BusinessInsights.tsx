@@ -202,7 +202,7 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
     <div className="p-4 space-y-5 pb-32">
 
       {/* Header Card */}
-      <div className="bg-black p-6 rounded-[2.5rem] text-white shadow-2xl">
+      <div className="bg-navy-800 border border-cyan/30 p-6 rounded-[2.5rem] text-white shadow-cyan-glow">
         <div className="flex items-center gap-2 mb-3">
           <Brain size={20} className="opacity-70" />
           <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50">AI Business Insights</p>
@@ -213,10 +213,10 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
 
       {/* This Week Stats */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white p-4 rounded-[1.5rem] border border-gray-100 shadow-sm">
+        <div className="bg-navy-700 p-4 rounded-[1.5rem] border border-navy-600 shadow-card-dark">
           <div className="flex items-center gap-1 mb-2">
             <TrendingUp size={13} className="text-green-500" />
-            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">This Week Income</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">This Week Income</p>
           </div>
           <p className="font-black text-lg text-green-600">₹{weeklyStats.income.toLocaleString('hi-IN')}</p>
           {incomeChange !== 0 && (
@@ -225,10 +225,10 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
             </p>
           )}
         </div>
-        <div className="bg-white p-4 rounded-[1.5rem] border border-gray-100 shadow-sm">
+        <div className="bg-navy-700 p-4 rounded-[1.5rem] border border-navy-600 shadow-card-dark">
           <div className="flex items-center gap-1 mb-2">
             <TrendingDown size={13} className="text-red-500" />
-            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">This Week Expense</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">This Week Expense</p>
           </div>
           <p className="font-black text-lg text-red-600">₹{weeklyStats.expense.toLocaleString('hi-IN')}</p>
           {expenseChange !== 0 && (
@@ -243,7 +243,7 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
       <button
         onClick={generateInsights}
         disabled={loading}
-        className="w-full flex items-center justify-center gap-3 p-5 bg-black text-white rounded-2xl font-bold disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-3 p-5 bg-cyan text-navy-950 rounded-2xl font-bold disabled:opacity-50 shadow-cyan-glow"
       >
         {loading ? (
           <>
@@ -259,7 +259,7 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
       </button>
 
       {lastGenerated && !loading && (
-        <p className="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest -mt-2">
+        <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest -mt-2">
           Last generated at {lastGenerated}
         </p>
       )}
@@ -269,7 +269,7 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
         <div className="space-y-4">
 
           {/* Summary */}
-          <div className="bg-gray-900 text-white p-5 rounded-2xl">
+          <div className="bg-navy-700 border border-navy-600 text-white p-5 rounded-2xl">
             <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-2">Overall Summary</p>
             <p className="text-sm leading-relaxed font-medium">{insights.summary}</p>
           </div>
@@ -280,8 +280,8 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
               <div className="flex items-start gap-2">
                 {getInsightIcon(insight.type)}
                 <div>
-                  <p className="font-black text-gray-800 text-sm">{insight.title}</p>
-                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">{insight.detail}</p>
+                  <p className="font-black text-white text-sm">{insight.title}</p>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">{insight.detail}</p>
                 </div>
               </div>
             </div>
@@ -289,7 +289,7 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
 
           {/* Business Advice */}
           {insights.advice && (
-            <div className="bg-black text-white p-5 rounded-2xl">
+            <div className="bg-navy-800 border border-cyan/20 text-white p-5 rounded-2xl">
               <div className="flex items-center gap-2 mb-2">
                 <Lightbulb size={16} className="text-yellow-400" />
                 <p className="text-[10px] font-black uppercase tracking-widest opacity-60">AI Recommendation</p>
@@ -299,7 +299,7 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
           )}
 
           {/* Refresh hint */}
-          <div className="flex items-center justify-center gap-2 text-gray-400 py-2">
+          <div className="flex items-center justify-center gap-2 text-slate-400 py-2">
             <RefreshCw size={12} />
             <p className="text-[10px] font-bold uppercase tracking-widest">Insights update daily</p>
           </div>
@@ -308,10 +308,10 @@ OUTPUT ONLY this exact JSON (no markdown, no backticks):
 
       {/* Empty state */}
       {!insights && !loading && (
-        <div className="text-center py-10 text-gray-300">
+        <div className="text-center py-10 text-slate-500">
           <Brain size={48} className="mx-auto mb-3 opacity-20" strokeWidth={1} />
           <p className="font-bold text-sm uppercase tracking-widest">No insights yet</p>
-          <p className="text-xs mt-1 text-gray-400">Press the button above to analyze your business</p>
+          <p className="text-xs mt-1 text-slate-400">Press the button above to analyze your business</p>
         </div>
       )}
     </div>

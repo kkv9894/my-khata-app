@@ -1,7 +1,7 @@
 {
-  "name": "My Khata",
-  "short_name": "Khata",
-  "description": "Voice-powered Indian business ledger",
+  "name": "ZivaKhata",
+  "short_name": "ZivaKhata",
+  "description": "ZivaKhata — Your smart AI-powered Indian business ledger, powered by Ziva AI",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

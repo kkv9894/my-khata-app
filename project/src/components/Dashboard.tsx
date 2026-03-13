@@ -82,33 +82,33 @@ export default function Dashboard({ language = 'en' }: { language?: SupportedLan
 
   return (
     <div className="space-y-6 p-4 pb-32 animate-in fade-in duration-300">
-      <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between rounded-2xl border border-navy-600 bg-navy-800 p-4 shadow-card-dark">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-gray-50 p-2"><Calendar className="h-5 w-5 text-gray-700" /></div>
+          <div className="rounded-xl bg-navy-700 p-2"><Calendar className="h-5 w-5 text-slate-300" /></div>
           <div>
-            <p className="mb-1 text-[10px] font-black uppercase leading-none text-gray-400">Today</p>
-            <p className="text-sm font-bold text-gray-800">{currentTime.toLocaleDateString(language, { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p className="mb-1 text-[10px] font-black uppercase leading-none text-slate-400">Today</p>
+            <p className="text-sm font-bold text-white">{currentTime.toLocaleDateString(language, { day: 'numeric', month: 'long', year: 'numeric' })}</p>
           </div>
         </div>
         <div className="text-right">
-          <div className="flex items-center gap-2 text-lg font-black text-gray-700">
+          <div className="flex items-center gap-2 text-lg font-black text-slate-300">
             <Clock size={18} />
             {currentTime.toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })}
           </div>
         </div>
       </div>
 
-      <h2 className="flex items-center gap-2 px-1 text-2xl font-black"><PieChart className="text-gray-700" />{t.title}</h2>
+      <h2 className="flex items-center gap-2 px-1 text-2xl font-black"><PieChart className="text-slate-300" />{t.title}</h2>
 
-      <div className="relative overflow-hidden rounded-[2.5rem] bg-black p-8 text-white shadow-2xl">
+      <div className="relative overflow-hidden rounded-[2.5rem] bg-navy-800 border border-cyan/30 p-8 text-white shadow-cyan-glow">
         <div className="absolute right-[-20px] top-[-10px] opacity-10">
           <Activity size={120} />
         </div>
         <div className="relative z-10">
-          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">{t.balance}</p>
+          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t.balance}</p>
           <p className="mb-6 text-5xl font-black tracking-tighter">₹{balance.toLocaleString('en-IN')}</p>
           <div className="space-y-2">
-            <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-gray-400">
+            <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400">
               <span>{t.savings}</span>
               <span>{savingsPercent}%</span>
             </div>
@@ -120,29 +120,29 @@ export default function Dashboard({ language = 'en' }: { language?: SupportedLan
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="group relative overflow-hidden rounded-3xl border-2 border-gray-50 bg-white p-5 shadow-sm">
+        <div className="group relative overflow-hidden rounded-3xl border-2 border-navy-600 bg-navy-800 p-5 shadow-card-dark">
           <ArrowUpRight className="absolute -right-2 -top-2 h-12 w-12 text-green-500/10 transition-transform group-hover:scale-110" />
           <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-green-600">{t.income}</p>
-          <p className="text-2xl font-black text-gray-900">₹{totalIn.toLocaleString('en-IN')}</p>
+          <p className="text-2xl font-black text-white">₹{totalIn.toLocaleString('en-IN')}</p>
         </div>
-        <div className="group relative overflow-hidden rounded-3xl border-2 border-gray-50 bg-white p-5 shadow-sm">
+        <div className="group relative overflow-hidden rounded-3xl border-2 border-navy-600 bg-navy-800 p-5 shadow-card-dark">
           <ArrowDownRight className="absolute -right-2 -top-2 h-12 w-12 text-red-500/10 transition-transform group-hover:scale-110" />
           <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-red-600">{t.expense}</p>
-          <p className="text-2xl font-black text-gray-900">₹{totalEx.toLocaleString('en-IN')}</p>
+          <p className="text-2xl font-black text-white">₹{totalEx.toLocaleString('en-IN')}</p>
         </div>
       </div>
 
-      <div className="rounded-[2rem] border-2 border-gray-50 bg-white p-6 shadow-sm">
-        <h3 className="mb-6 text-[10px] font-black uppercase tracking-widest text-gray-400">{t.weekly}</h3>
+      <div className="rounded-[2rem] border-2 border-navy-600 bg-navy-800 p-6 shadow-card-dark">
+        <h3 className="mb-6 text-[10px] font-black uppercase tracking-widest text-slate-400">{t.weekly}</h3>
         <div className="flex h-32 items-end justify-between gap-2 px-1">
           {chartData.map((entry) => (
             <div key={entry.day} className="group flex flex-1 flex-col items-center gap-3">
               <div className="relative flex h-full w-full flex-col justify-end">
-                <div className="relative w-full rounded-t-xl bg-gray-100 transition-all duration-700 group-hover:bg-black" style={{ height: `${(entry.amount / maxVal) * 100}%`, minHeight: '6px' }}>
-                  {entry.amount > 0 && <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[8px] font-black text-gray-700 opacity-0 transition-opacity group-hover:opacity-100">₹{entry.amount}</span>}
+                <div className="relative w-full rounded-t-xl bg-navy-700 transition-all duration-700 group-hover:bg-cyan" style={{ height: `${(entry.amount / maxVal) * 100}%`, minHeight: '6px' }}>
+                  {entry.amount > 0 && <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[8px] font-black text-cyan opacity-0 transition-opacity group-hover:opacity-100">₹{entry.amount}</span>}
                 </div>
               </div>
-              <span className="text-[10px] font-bold uppercase text-gray-400">{entry.day}</span>
+              <span className="text-[10px] font-bold uppercase text-slate-400">{entry.day}</span>
             </div>
           ))}
         </div>
@@ -150,14 +150,14 @@ export default function Dashboard({ language = 'en' }: { language?: SupportedLan
 
       {/* 🌟 NEW ENHANCEMENT UI: AI Category Breakdown */}
       {categoryTotals.length > 0 && (
-        <div className="rounded-[2rem] border-2 border-gray-50 bg-white p-6 shadow-sm mt-4">
-          <h3 className="mb-5 text-[10px] font-black uppercase tracking-widest text-gray-400">{t.overview}</h3>
+        <div className="rounded-[2rem] border-2 border-navy-600 bg-navy-800 p-6 shadow-card-dark mt-4">
+          <h3 className="mb-5 text-[10px] font-black uppercase tracking-widest text-slate-400">{t.overview}</h3>
           <div className="space-y-4">
             {categoryTotals.map(([category, amount]) => {
               const percentage = totalEx > 0 ? Math.round((amount / totalEx) * 100) : 0;
               return (
                 <div key={category} className="space-y-1">
-                  <div className="flex justify-between text-sm font-bold text-gray-700">
+                  <div className="flex justify-between text-sm font-bold text-slate-300">
                     <span>{category}</span>
                     <span>₹{amount.toLocaleString('en-IN')}</span>
                   </div>

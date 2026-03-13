@@ -1,46 +1,6 @@
 ﻿// lib/gemini.ts
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-
-// ── Filler-word guard ─────────────────────────────────────────────────────────
-// Called BEFORE any API in processAndSave. If the ENTIRE transcript is just
-// conversational noise with no financial content → skip all API calls instantly.
-//
-// Strategy: no numbers AND every word matches known fillers → discard.
-// Safe: real transactions almost always contain a number (amount or quantity).
-const FILLER_SET = new Set([
-  // Kannada
-  'matthe','matte','matteh','mattenu','mattenuu','avnu','avalu','sari','seri',
-  'ho','hoo','anna','amma','ayyo','ayo','ooh','aah',
-  // Hindi / Hinglish
-  'aur','phir','phirr','haan','haa','toh','bas','accha','acha','theek','thik',
-  'yaar','bhai','arrey','arre','matlab','kyunki','lekin','acha',
-  // Tamil / Tanglish
-  'appuram','apuram','marubadiyum','marubadiyam','innum','seri','seri','paaru',
-  'enna','endha','aama','illa','athuvum','oru','aama','solli',
-  // Malayalam
-  'pinne','penne','athre','ille','athe','oo','pinne','alle',
-  // Telugu
-  'mariyu','inka','avunu','kaadu','sare','appudu','enta','em',
-  // Generic noise
-  'and','then','next','um','umm','uh','uhh','hmm','hm','okay','ok',
-  'sir','madam','anna','amma','bhai','didi',
-])
-
-/**
- * Returns true if the ENTIRE transcript is filler — no numbers, no real items.
- * Used to short-circuit processAndSave before any API call.
- */
-export function isFillerOnly(text: string): boolean {
-  if (!text || !text.trim()) return true
-  // If there's any digit → likely a real transaction (has amount or quantity)
-  if (/\d/.test(text)) return false
-  // If text is longer than 6 words it's probably a sentence, not a filler burst
-  const words = text.trim().toLowerCase().split(/\s+/)
-  if (words.length > 6) return false
-  // All words must be known fillers
-  return words.every(w => FILLER_SET.has(w.replace(/[.,!?]/g, '')))
-}
 const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,7 +86,10 @@ export async function detectVoiceIntent(
     `${t.transaction_date}: ${t.type} ₹${t.amount} - ${t.description || 'Voice Entry'}`
   ).join('\n');
 
-  const prompt = `You are the Smart Clerk for "My Khata", an Indian small business ledger app.
+  const prompt = `You are Ziva, a highly intelligent, fast, and friendly financial AI assistant for the "My Khata" app. You help Indian shopkeepers and individuals track their money via voice.
+
+IDENTITY: If the user asks "who are you", "what is your name", "aap kaun ho", "neenga yaar", or any equivalent in any language, respond with intent="query" and answer="I am Ziva, your smart ledger assistant. How can I help you today?"
+
 The user spoke: "${text}"
 
 Recent transactions (newest first):
@@ -177,11 +140,15 @@ OUTPUT: JSON only, no markdown.
 // F7: Enhanced code-switching prompt — Tanglish/Hinglish/Telugish/Kannglish/
 //     Malayalish + non-standard grammar + missing verb patterns + number words
 // ─────────────────────────────────────────────────────────────────────────────
-export async function analyzeTransaction(text: string) {
+export async function analyzeTransaction(text: string, accountType: 'personal' | 'business' = 'business') {
   if (!GEMINI_API_KEY) { console.error("Missing Gemini API Key"); return null; }
 
-  const systemPrompt = `
-You are the AI engine for "My Khata", an Indian business ledger app.
+  // Dynamic persona based on account type
+  const personaContext = accountType === 'business'
+    ? `You are Ziva, a sharp and professional shop assistant AI for "My Khata". You help Indian shopkeepers track sales, expenses, Udhaar (credit), and inventory via voice. Be precise and fast.`
+    : `You are Ziva, a friendly personal finance coach AI for "My Khata". You help individuals track daily expenses, salary, and savings via voice. Be warm and encouraging.`
+
+  const systemPrompt = `${personaContext}
 Analyze this voice input: "${text}"
 
 LANGUAGE: The user speaks in English, Hindi, Tamil, Telugu, Kannada, Malayalam,
@@ -258,25 +225,7 @@ NON-STANDARD GRAMMAR (grammatically wrong but financially clear):
 "customer 2000 ka diya aaj" → income ₹2000
 
 
-═══ STEP 0 — FILLER WORD FILTER ═══════════════════════════════════════════════
-You are processing NATURAL, MESSY SPEECH from busy Indian shopkeepers.
-Transcripts contain conversational noise that is NOT a transaction.
-
-STRICTLY IGNORE these words entirely — they carry ZERO financial meaning:
-  Kannada  : matthe, matte, mattenu, sari, anna, ayyo, avnu
-  Hindi    : aur, phir, haan, toh, bas, accha, theek, yaar, arrey
-  Tamil    : appuram, marubadiyum, innum, seri, enna, aama
-  Malayalam: pinne, penne, athre, ille, alle
-  Telugu   : mariyu, inka, avunu, sare, appudu
-  Universal: and, then, next, um, umm, uh, uhh, hmm, okay, ok, sir, madam
-
-CRITICAL AMOUNT RULES:
-- NEVER output amount=1 as a default. 1 rupee is almost never a real transaction.
-- NEVER invent or guess an amount. If no rupee amount is said → amount=0, confidence=low.
-- If the ENTIRE input is only filler words/conjunctions above → set is_financial=false, entries=[].
-- Only output entries where a clear price IN RUPEES was spoken.
-
-
+═══ STEP 1 — IS THIS REAL FINANCE? ════════════════════════════════════════════
 REAL = amount (any form) + item/action. Verb optional.
 NOT REAL = pure conversation: "hello", "testing", "what is this", "okay sir"
 ALWAYS FINANCIAL if: ₹ symbol, OR Indian number word, OR financial verb present
@@ -368,7 +317,7 @@ OUTPUT: JSON only. No markdown, no backticks, no extra text.
         : [];
 
     const entries = rawEntries
-      .filter((e: any) => Number(e.amount) > 1)   // >1 kills filler "amount=1" hallucinations
+      .filter((e: any) => Number(e.amount) > 0)
       .map((e: any) => ({
         item:     String(e.item || 'Voice Entry').trim(),
         amount:   Number(e.amount),
@@ -467,13 +416,13 @@ export const askFinancialAI = async (
       `${t.transaction_date}: ${t.type} ₹${t.amount} - ${t.description || 'Voice Entry'}`
     ).join('\n');
 
-    const prompt = `You are a friendly financial assistant for "My Khata", an Indian small-business ledger app.
+    const prompt = `You are Ziva, a friendly and intelligent financial assistant for "My Khata", an Indian small-business ledger app. You are sharp, warm, and always helpful.
 Recent transactions (newest first):
 ${txSummary || 'No transactions recorded yet.'}
 
 User asks: "${question}"
 
-Rules: Answer in 2-3 sentences max. Use ₹ for amounts. Be conversational and friendly.
+Rules: Answer in 2-3 sentences max. Use ₹ for amounts. Be conversational and friendly — you are Ziva, their smart ledger assistant.
 If data is insufficient, say so clearly. Reply in the SAME language as the user.
 No markdown, no bullet points, no headers.`;
 

@@ -93,22 +93,22 @@ export default function StaffManager() {
   if (isStaff) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100"><User size={30} className="text-gray-400" /></div>
-        <h2 className="text-xl font-black text-gray-800">Staff Account</h2>
-        <p className="max-w-xs text-sm text-gray-400">You are logged in as staff. You can add transactions and scan receipts, but owner-only settings are locked.</p>
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-navy-700"><User size={30} className="text-slate-400" /></div>
+        <h2 className="text-xl font-black text-white">Staff Account</h2>
+        <p className="max-w-xs text-sm text-slate-400">You are logged in as staff. You can add transactions and scan receipts, but owner-only settings are locked.</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-5 p-4 pb-32">
-      <div className="rounded-[2.5rem] bg-black p-6 text-white shadow-2xl">
+      <div className="rounded-[2.5rem] bg-navy-800 border border-cyan/30 p-6 text-white shadow-cyan-glow">
         <div className="mb-1 flex items-center gap-2"><Crown size={16} className="opacity-60" /><p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50">Owner</p></div>
         {editingShop ? (
           <div className="mt-2 flex gap-2">
-            <input value={shopInput} onChange={(event) => setShopInput(event.target.value)} className="flex-1 rounded-xl bg-white/20 px-3 py-2 font-bold text-white outline-none placeholder:text-white/50" placeholder="Shop name" />
-            <button onClick={() => void saveShopName()} className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-black">Save</button>
-            <button onClick={() => setEditingShop(false)} className="rounded-xl p-2 hover:bg-white/10"><X size={18} /></button>
+            <input value={shopInput} onChange={(event) => setShopInput(event.target.value)} className="flex-1 rounded-xl bg-navy-700 border border-navy-600 px-3 py-2 font-bold text-white outline-none placeholder:text-white/50" placeholder="Shop name" />
+            <button onClick={() => void saveShopName()} className="rounded-xl bg-cyan px-3 py-2 text-sm font-bold text-navy-950">Save</button>
+            <button onClick={() => setEditingShop(false)} className="rounded-xl p-2 hover:bg-navy-900/10"><X size={18} /></button>
           </div>
         ) : (
           <div className="mt-1 flex items-center justify-between">
@@ -118,11 +118,11 @@ export default function StaffManager() {
         )}
       </div>
 
-      <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-        <div className="flex items-center gap-2"><ShieldCheck size={18} className="text-gray-700" /><h3 className="font-black text-gray-800">Staff Access</h3></div>
-        <p className="text-xs font-semibold text-gray-400">Staff can add transactions but cannot manage customers, reports, or owner settings.</p>
+      <div className="space-y-4 rounded-2xl border border-navy-600 bg-navy-800 p-5 shadow-card-dark">
+        <div className="flex items-center gap-2"><ShieldCheck size={18} className="text-slate-300" /><h3 className="font-black text-white">Staff Access</h3></div>
+        <p className="text-xs font-semibold text-slate-400">Staff can add transactions but cannot manage customers, reports, or owner settings.</p>
         <div className="flex gap-2">
-          <input type="email" placeholder="Staff email address" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} className="flex-1 rounded-xl border-2 border-transparent bg-gray-50 px-4 py-3 text-sm font-semibold outline-none focus:border-black" />
+          <input type="email" placeholder="Staff email address" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} className="flex-1 rounded-xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-semibold outline-none focus:border-black" />
           <button onClick={() => void addStaff()} disabled={!newEmail.trim() || adding} className="flex items-center gap-1 rounded-xl bg-black px-4 py-3 font-bold text-white disabled:opacity-40">{adding ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}</button>
         </div>
       </div>
@@ -133,11 +133,11 @@ export default function StaffManager() {
         <div className="py-8 text-center text-gray-300"><UserPlus size={36} className="mx-auto mb-2 opacity-30" strokeWidth={1} /><p className="text-sm font-bold uppercase tracking-widest">No staff added yet</p></div>
       ) : (
         <div className="space-y-3">
-          <p className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-400">Staff Members</p>
+          <p className="px-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Staff Members</p>
           {staffList.map((member) => (
-            <div key={member.id} className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100"><User size={16} className="text-gray-400" /></div>
-              <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-gray-800">{member.staff_email}</p><span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${member.status === 'active' ? 'bg-green-100 text-green-600' : member.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-500'}`}>{member.status}</span></div>
+            <div key={member.id} className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-navy-900 p-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100"><User size={16} className="text-slate-400" /></div>
+              <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-white">{member.staff_email}</p><span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${member.status === 'active' ? 'bg-green-100 text-green-600' : member.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-500'}`}>{member.status}</span></div>
               <div className="flex shrink-0 gap-2">
                 {member.status === 'active' && <button onClick={() => void revokeStaff(member.id)} className="rounded-xl p-2 text-xs font-bold text-yellow-500 hover:bg-yellow-50">Revoke</button>}
                 <button onClick={() => void removeStaff(member.id)} className="rounded-xl p-2 text-red-400 hover:bg-red-50"><Trash2 size={15} /></button>

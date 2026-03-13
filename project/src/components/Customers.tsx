@@ -62,8 +62,6 @@ export default function Customers({ language = 'en' }: Props) {
   const [voiceBlob, setVoiceBlob]           = useState<Blob | null>(null);
   const [voicePlayUrl, setVoicePlayUrl]     = useState<string | null>(null);
   const [voiceCountdown, setVoiceCountdown] = useState(0);
-  const [voiceUploading, setVoiceUploading] = useState(false);   // ✅ Upload progress
-  const [voiceUploadErr, setVoiceUploadErr] = useState<string | null>(null); // ✅ Upload error
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceChunksRef   = useRef<Blob[]>([]);
   const countdownRef     = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -112,65 +110,14 @@ export default function Customers({ language = 'en' }: Props) {
     }
   };
 
-  // ── F5: Upload voice blob to Supabase Storage ─────────────────────────────
-  // Bucket: voice_receipts (public read, authenticated write)
-  // Path:   {user_id}/{customer_id}/{timestamp}.webm
-  // Returns: public URL string, or null on failure
-  // ── Supabase setup (run once in SQL editor): ──────────────────────────────
-  //   insert into storage.buckets (id, name, public)
-  //     values ('voice_receipts', 'voice_receipts', true);
-  //   create policy "Auth users upload" on storage.objects
-  //     for insert to authenticated
-  //     with check (bucket_id = 'voice_receipts');
-  //   create policy "Public read" on storage.objects
-  //     for select to public
-  //     using (bucket_id = 'voice_receipts');
-  // ─────────────────────────────────────────────────────────────────────────
-  const uploadVoiceToStorage = async (
-    blob: Blob,
-    customerId: string
-  ): Promise<string | null> => {
-    if (!user?.id) return null;
-    setVoiceUploading(true);
-    setVoiceUploadErr(null);
-
-    try {
-      // Determine file extension from blob MIME type
-      const ext = blob.type.includes('ogg') ? 'ogg'
-                : blob.type.includes('mp4') ? 'mp4'
-                : 'webm';
-
-      const timestamp = Date.now();
-      const filePath = `${user.id}/${customerId}/${timestamp}.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('voice_receipts')
-        .upload(filePath, blob, {
-          contentType: blob.type || 'audio/webm',
-          upsert: false,          // never overwrite — each clip is unique
-        });
-
-      if (uploadError) {
-        console.error('Voice upload error:', uploadError.message);
-        setVoiceUploadErr(`Upload failed: ${uploadError.message}`);
-        return null;
-      }
-
-      // Get the public URL (bucket is public)
-      const { data } = supabase.storage
-        .from('voice_receipts')
-        .getPublicUrl(filePath);
-
-      return data?.publicUrl ?? null;
-
-    } catch (err: any) {
-      console.error('Voice upload exception:', err);
-      setVoiceUploadErr('Upload failed. Voice promise saved locally.');
-      return null;
-    } finally {
-      setVoiceUploading(false);
-    }
-  };
+  // Convert blob to base64 for storage
+  const blobToBase64 = (blob: Blob): Promise<string> =>
+    new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result as string);
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
 
   // ── F2: Localized WhatsApp reminder messages ──────────────────────────────
   const buildWAMessage = (customerName: string, balance: number): string => {
@@ -238,12 +185,10 @@ export default function Customers({ language = 'en' }: Props) {
     if (!amount || !user) return;
     setTxSaving(true);
 
-    // ✅ F5 UPGRADED: Upload voice blob to Supabase Storage (was: base64 in DB column)
-    // Benefits: smaller DB rows, proper audio URLs, CDN delivery, playback anywhere
+    // F5: Convert voice blob to base64 if recorded for this credit entry
     let voicePromiseUrl: string | null = null;
     if (txType === 'credit' && voiceBlob) {
-      voicePromiseUrl = await uploadVoiceToStorage(voiceBlob, customer.id);
-      // If upload fails, we still save the transaction — voice is optional
+      try { voicePromiseUrl = await blobToBase64(voiceBlob); } catch { /* ignore */ }
     }
 
     // Insert udhaar transaction (with optional voice_promise_url for dispute resolution)
@@ -339,7 +284,7 @@ export default function Customers({ language = 'en' }: Props) {
     <div className="p-4 space-y-5 pb-32">
 
       {/* Summary Card */}
-      <div className="bg-black p-6 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
+      <div className="bg-navy-800 border border-cyan/30 p-6 rounded-[2.5rem] text-white shadow-cyan-glow relative overflow-hidden">
         <div className="absolute right-[-10px] top-[-10px] opacity-10"><Users size={100} /></div>
         <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 mb-1">Total Udhaar Pending</p>
         <h2 className="text-4xl font-black tracking-tighter">
@@ -351,39 +296,39 @@ export default function Customers({ language = 'en' }: Props) {
       {/* Add Customer Button */}
       <button
         onClick={() => setShowAddCustomer(true)}
-        className="w-full flex items-center justify-center gap-2 p-4 bg-black text-white rounded-2xl font-bold"
+        className="w-full flex items-center justify-center gap-2 p-4 bg-cyan text-navy-950 rounded-2xl font-bold"
       >
         <Plus size={20} /> Add Customer
       </button>
 
       {/* Add Customer Modal */}
       {showAddCustomer && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-end justify-center">
-          <div className="bg-white w-full max-w-lg rounded-t-[2.5rem] p-6 pb-10 space-y-4">
+        <div className="fixed inset-0 bg-navy-950/80 backdrop-blur-sm z-[200] flex items-end justify-center">
+          <div className="bg-navy-800 border-t border-navy-600 w-full max-w-lg rounded-t-[2.5rem] p-6 pb-10 space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="font-black text-lg">New Customer</h2>
-              <button onClick={() => setShowAddCustomer(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+              <button onClick={() => setShowAddCustomer(false)} className="p-2 hover:bg-navy-700 rounded-full"><X size={20} /></button>
             </div>
             <div className="space-y-3">
               <input
                 type="text" placeholder="Customer Name *"
                 value={newName} onChange={e => setNewName(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 rounded-2xl font-semibold outline-none border-2 border-transparent focus:border-black"
+                className="w-full px-4 py-3 bg-navy-700 border-2 border-navy-600 rounded-2xl font-semibold text-white outline-none focus:border-cyan"
               />
               <input
                 type="tel" placeholder="Phone Number (for WhatsApp)"
                 value={newPhone} onChange={e => setNewPhone(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 rounded-2xl font-semibold outline-none border-2 border-transparent focus:border-black"
+                className="w-full px-4 py-3 bg-navy-700 border-2 border-navy-600 rounded-2xl font-semibold text-white outline-none focus:border-cyan"
               />
               <input
                 type="text" placeholder="Notes (optional)"
                 value={newNotes} onChange={e => setNewNotes(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 rounded-2xl font-semibold outline-none border-2 border-transparent focus:border-black"
+                className="w-full px-4 py-3 bg-navy-700 border-2 border-navy-600 rounded-2xl font-semibold text-white outline-none focus:border-cyan"
               />
             </div>
             <button
               onClick={addCustomer} disabled={!newName.trim() || saving}
-              className="w-full p-4 bg-black text-white rounded-2xl font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+              className="w-full p-4 bg-cyan text-navy-950 rounded-2xl font-bold flex items-center justify-center gap-2 disabled:opacity-40"
             >
               {saving ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
               Save Customer
@@ -401,9 +346,9 @@ export default function Customers({ language = 'en' }: Props) {
 
       {/* Customer List */}
       {loading ? (
-        <div className="flex justify-center py-10"><Loader2 className="animate-spin text-gray-300" size={30} /></div>
+        <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-500" size={30} /></div>
       ) : customers.length === 0 ? (
-        <div className="text-center py-16 text-gray-300">
+        <div className="text-center py-16 text-slate-500">
           <Users size={48} className="mx-auto mb-3 opacity-30" strokeWidth={1} />
           <p className="font-bold text-sm uppercase tracking-widest">No customers yet</p>
           <p className="text-xs mt-1">Add your first Udhaar customer above</p>
@@ -415,7 +360,7 @@ export default function Customers({ language = 'en' }: Props) {
             const isExpanded = expandedId === customer.id;
 
             return (
-              <div key={customer.id} className="bg-white rounded-[1.5rem] border border-gray-100 shadow-sm overflow-hidden">
+              <div key={customer.id} className="bg-navy-800 rounded-[1.5rem] border border-navy-600 shadow-card-dark overflow-hidden">
 
                 {/* Customer Row */}
                 <div
@@ -423,14 +368,14 @@ export default function Customers({ language = 'en' }: Props) {
                   onClick={() => toggleExpand(customer.id)}
                 >
                   {/* Avatar */}
-                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-black text-gray-700 shrink-0">
+                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-black text-slate-300 shrink-0">
                     {customer.name.charAt(0).toUpperCase()}
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-black text-gray-800">{customer.name}</p>
-                    <p className="text-[10px] text-gray-400 font-semibold">
+                    <p className="font-black text-white">{customer.name}</p>
+                    <p className="text-[10px] text-slate-400 font-semibold">
                       {customer.phone || 'No phone'} {customer.notes ? `· ${customer.notes}` : ''}
                     </p>
                   </div>
@@ -440,17 +385,17 @@ export default function Customers({ language = 'en' }: Props) {
                     <p className={`font-black text-base ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                       ₹{Math.abs(balance).toLocaleString('hi-IN')}
                     </p>
-                    <p className="text-[9px] font-black uppercase text-gray-400">
+                    <p className="text-[9px] font-black uppercase text-slate-400">
                       {balance > 0 ? 'Pending' : balance === 0 ? 'Cleared' : 'Overpaid'}
                     </p>
                   </div>
 
-                  {isExpanded ? <ChevronUp size={18} className="text-gray-400 shrink-0" /> : <ChevronDown size={18} className="text-gray-400 shrink-0" />}
+                  {isExpanded ? <ChevronUp size={18} className="text-slate-400 shrink-0" /> : <ChevronDown size={18} className="text-slate-400 shrink-0" />}
                 </div>
 
                 {/* Expanded Actions */}
                 {isExpanded && (
-                  <div className="border-t border-gray-50 p-4 space-y-4 bg-gray-50/50">
+                  <div className="border-t border-gray-50 p-4 space-y-4 bg-navy-900/50">
 
                     {/* Quick Actions */}
                     <div className="grid grid-cols-2 gap-2">
@@ -491,18 +436,18 @@ export default function Customers({ language = 'en' }: Props) {
                     {/* Add Transaction Form */}
                     {txCustomerId === customer.id && (
                       <div className="bg-white rounded-2xl p-4 space-y-3 border border-gray-100">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                           {txType === 'credit' ? '+ Add Udhaar (Credit)' : '+ Record Payment'}
                         </p>
                         <input
                           type="number" placeholder="Amount ₹"
                           value={txAmount} onChange={e => setTxAmount(e.target.value)}
-                          className="w-full px-4 py-3 bg-gray-50 rounded-xl font-bold outline-none border-2 border-transparent focus:border-black"
+                          className="w-full px-4 py-3 bg-navy-900 rounded-xl font-bold outline-none border-2 border-transparent focus:border-black"
                         />
                         <input
                           type="text" placeholder="Note (optional)"
                           value={txNote} onChange={e => setTxNote(e.target.value)}
-                          className="w-full px-4 py-3 bg-gray-50 rounded-xl font-semibold outline-none border-2 border-transparent focus:border-black"
+                          className="w-full px-4 py-3 bg-navy-900 rounded-xl font-semibold outline-none border-2 border-transparent focus:border-black"
                         />
 
                         {/* F5: Voice Sign-Off — only shown for credit (udhaar) entries */}
@@ -537,41 +482,22 @@ export default function Customers({ language = 'en' }: Props) {
                                   style={{ height: 32, minWidth: 0 }}
                                 />
                                 <button
-                                  onClick={() => {
-                                    setVoiceBlob(null);
-                                    setVoicePlayUrl(null);
-                                    setVoiceUploadErr(null);
-                                  }}
+                                  onClick={() => { setVoiceBlob(null); setVoicePlayUrl(null); }}
                                   className="p-1.5 rounded-lg bg-gray-100 text-gray-500"
                                 >
                                   <MicOff size={14} />
                                 </button>
                               </div>
                             )}
-
-                            {/* ✅ Upload status feedback */}
-                            {voiceUploading && (
-                              <div className="flex items-center gap-2 text-[10px] text-blue-600 font-bold">
-                                <Loader2 size={12} className="animate-spin" />
-                                Uploading voice promise to secure storage...
-                              </div>
-                            )}
-                            {voiceUploadErr && (
-                              <p className="text-[10px] text-amber-600 font-bold">
-                                ⚠ {voiceUploadErr}
-                              </p>
-                            )}
-                            {voiceBlob && !voiceUploading && !voiceUploadErr && (
-                              <p className="text-[10px] text-green-600 font-bold">
-                                ✓ Voice promise recorded — will be uploaded to secure storage on Save
-                              </p>
+                            {voiceBlob && (
+                              <p className="text-[10px] text-green-600 font-bold">✓ Voice promise recorded — will be stored with this entry</p>
                             )}
                           </div>
                         )}
 
                         <div className="grid grid-cols-2 gap-2">
                           <button
-                            onClick={() => { setTxCustomerId(null); setVoiceBlob(null); setVoicePlayUrl(null); setVoiceUploadErr(null); }}
+                            onClick={() => { setTxCustomerId(null); setVoiceBlob(null); setVoicePlayUrl(null); }}
                             className="p-3 bg-gray-100 rounded-xl font-bold text-sm"
                           >Cancel</button>
                           <button
@@ -589,12 +515,12 @@ export default function Customers({ language = 'en' }: Props) {
                     {/* Transaction History */}
                     {txHistory[customer.id] && txHistory[customer.id].length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 px-1">History</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">History</p>
                         {txHistory[customer.id].map(tx => (
                           <div key={tx.id} className="flex justify-between items-center bg-white rounded-xl px-3 py-2 border border-gray-100">
                             <div>
-                              <p className="text-xs font-bold text-gray-700">{tx.note || (tx.type === 'credit' ? 'Udhaar given' : 'Payment received')}</p>
-                              <p className="text-[9px] text-gray-400">{new Date(tx.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
+                              <p className="text-xs font-bold text-slate-300">{tx.note || (tx.type === 'credit' ? 'Udhaar given' : 'Payment received')}</p>
+                              <p className="text-[9px] text-slate-400">{new Date(tx.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
                             </div>
                             <p className={`font-black text-sm ${tx.type === 'credit' ? 'text-red-600' : 'text-green-600'}`}>
                               {tx.type === 'credit' ? '+' : '-'}₹{tx.amount}
