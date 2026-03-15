@@ -13,7 +13,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? ''
-const MODEL    = 'gemini-2.0-flash'
+const MODEL = 'gemini-2.5-flash-preview-04-17'
 const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`
 
 // FIX C: Exponential backoff retry wrapper
