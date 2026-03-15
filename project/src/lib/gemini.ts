@@ -135,94 +135,116 @@ YOUR ABSOLUTE RULE: NEVER fail due to bad grammar, mixed scripts, phonetic
 spelling, or incomplete sentences. ALWAYS extract the financial intent:
   → Amount   (any number = money)
   → Item     (what was bought/sold/paid)
-  → Action   (expense or income or udhaar/credit)
+  → Action   (expense / income / udhaar)
   → Person   (for udhaar entries)
 
-The 5 code-switched dialects you MUST handle flawlessly:
+═══ TRANSACTION TYPE RULES (READ CAREFULLY) ════════════════════════════════════
 
-1. TANGLISH (Tamil + English) — spoken by Tamil Nadu / Chennai users:
-   "Milk ku 50 rupees add pannu."
-   → Intent: Add Expense | Amount: 50 | Category: Groceries | Item: milk
-   More examples:
-   "rice vangirukkean 120"  → expense rice ₹120
-   "petrol pottaen 500"     → expense petrol ₹500
-   "customer kitta 2000 vandhuchu" → income ₹2000
-   "rent kodutten 8000"     → expense rent ₹8000
-   "sale achu 5000"         → income sales ₹5000
+── EXPENSE (shopkeeper spends money) ────────────────────────────────────────────
+Shopkeeper is PAYING money out of pocket for shop costs or stock purchases.
+  → Buying wholesale stock:   "50kg sugar vangitten 50000"  → expense ₹50000
+  → Shop running costs:       "rent kodutten 8000"          → expense ₹8000
+  → Personal purchases:       "milk 45", "petrol 500"       → expense
+  RULE: expense verbs = bought/paid/purchased/vangitten/konnanu/vaangichi/tagondu
 
-2. HINGLISH (Hindi + English) — spoken by North India / Hindi belt users:
-   "Ramesh ko 500 udhaar diya."
-   → Intent: Add Udhaar/Credit | Amount: 500 | Person: Ramesh
-   More examples:
-   "rice 120 le aya"        → expense rice ₹120
-   "salary aayi 25000"      → income salary ₹25000
-   "bijli ka bill bhara 800" → expense electricity ₹800
-   "doodh liya 42"          → expense milk ₹42
+── INCOME (shopkeeper receives money) ───────────────────────────────────────────
+Shopkeeper RECEIVES cash from a customer right now. Money is in hand.
+  → Cash sale:   "2kg sugar sold for 2000"                  → income ₹2000
+  → Cash sale:   "customer kitta 2000 vandhuchu"            → income ₹2000
+  → Cash sale:   "Ramesh 2kg sugar 2000 rupees kudutten"    → income ₹2000
+  RULE: income signals = sold/sale achu/vandhuchu/kittachu/vacchindi/kitti/sikkitu
 
-3. TENGLISH (Telugu + English) — spoken by Andhra Pradesh / Telangana users:
-   "1000 rupees rent pay chesanu."
-   → Intent: Add Expense | Amount: 1000 | Category: Rent
-   More examples:
-   "biyyam konnanu 90"      → expense rice ₹90
-   "palu konnanu 42"        → expense milk ₹42
-   "salary vacchindi 18000" → income salary ₹18000
-   "customer icchindi 3000" → income ₹3000
+── UDHAAR (credit given — customer will pay later) ──────────────────────────────
+Shopkeeper GIVES goods or money to a named person WITHOUT receiving cash yet.
+Person name + give verb (without cash received) = UDHAAR.
+  → "Ramesh ku 2kg sugar kudutten" (gave to Ramesh, no payment mentioned) → Udhaar
+  → "Suresh ge akki kotte" (gave rice to Suresh)                          → Udhaar
+  → "Arun ko udhaar diya 500"                                             → Udhaar
+  RULE: Udhaar signals = person name + kodutten/kotte/diya/koduthu + NO cash received
+  For udhaar: type="income", category="Udhaar" (money is OWED to shopkeeper)
 
-4. MANGLISH (Malayalam + English) — spoken by Kerala users:
-   "Phone recharge 200 rupees cheythu."
-   → Intent: Add Expense | Amount: 200 | Category: Recharge
-   More examples:
-   "paal vaangichi 42"      → expense milk ₹42
-   "salary kitti 20000"     → income salary ₹20000
-   "muringakka vaangi 35"   → expense drumstick ₹35
-   "rent koduththu 7000"    → expense rent ₹7000
+── STRICT RULE: NEVER classify giving items to a customer as EXPENSE ────────────
+  ✗ WRONG: "Ramesh ku sugar kudutten" → expense  (NEVER do this)
+  ✓ RIGHT: "Ramesh ku sugar kudutten" → income, category=Udhaar (Ramesh owes money)
+  Expenses are ONLY for: rent, electricity, wholesale purchases, transport, repairs.
 
-5. KANGLISH (Kannada + English) — spoken by Karnataka / Bangalore users:
-   "Suresh ge 300 rupees kotte."
-   → Intent: Add Udhaar/Credit | Amount: 300 | Person: Suresh
-   More examples:
-   "akki tagondu 65"        → expense rice ₹65
-   "halu tagondu 48"        → expense milk ₹48
-   "rent kottidde 7000"     → expense rent ₹7000
-   "customer sikkitu 3000"  → income ₹3000
+═══ THE 5 CODE-SWITCHED DIALECTS ═══════════════════════════════════════════════
 
-═══ VERB REFERENCE (strip these from item names) ════════════════════════════════
-EXPENSE verbs:
-  Tamil:     vanginen / vangitten / vangirukkean / vangirukken / kodutten / pottaen
-  Hindi:     liya / kharida / le aya / diya / bhara / kharcha kiya
-  Telugu:    konnanu / konnamu / kondi / ichanu / kattanu
-  Malayalam: vaangichi / vaangirunnu / vaangi / koduththu / cheythu
-  Kannada:   tagondu / tagondidde / kottidde / kharcha maadidde
-  English:   bought / paid / spent / got / purchased
+1. TANGLISH (Tamil + English) — Tamil Nadu / Chennai:
+   Cash Sale:   "2kg sugar Ramesh kitta 2000 ku vittaen"    → income ₹2000, item=sugar, qty=2kg
+   Cash Sale:   "arisi 5kg sale achu 600"                   → income ₹600,  item=arisi, qty=5kg
+   Udhaar Sale: "Ramesh ku 2kg sugar kudutten"              → income ₹0, category=Udhaar, person=Ramesh, item=2kg sugar
+   Udhaar Sale: "Priya kitta paal 3 packet kudutten baki"   → income, category=Udhaar, person=Priya
+   Expense:     "arisi vangitten 50kg 50000"                → expense ₹50000, item=arisi, qty=50kg
+   Expense:     "rent kodutten 8000"                        → expense ₹8000
 
-INCOME verbs:
-  Tamil:     vandhuchu / vanthuchu / kittachu / sale achu / vandhu
-  Hindi:     mila / aayi / aaya / diya (received) / milaa
-  Telugu:    vacchindi / icchindi / vachindi / vachindhi
-  Malayalam: kitti / kittichu / kittunnu / vandhu
-  Kannada:   sikkitu / banthu / banthide / sikkidhe
+2. HINGLISH (Hindi + English) — North India / Hindi belt:
+   Cash Sale:   "Ramesh ne 2kg cheeni kharida 2000 rupees"  → income ₹2000, item=cheeni, qty=2kg
+   Cash Sale:   "customer ko 5kg aata becha 300"            → income ₹300,  item=aata, qty=5kg
+   Udhaar Sale: "Ramesh ko 2kg cheeni diya udhaar mein"     → income, category=Udhaar, person=Ramesh
+   Udhaar Sale: "Suresh ko tel ki bottle di"                → income, category=Udhaar, person=Suresh
+   Expense:     "50kg cheeni kharida 50000"                 → expense ₹50000, item=cheeni, qty=50kg
+   Expense:     "bijli ka bill bhara 800"                   → expense ₹800
 
-═══ VERBLESS PATTERNS (extremely common — default = expense) ════════════════════
-"milk 45"    → expense milk ₹45
-"rice 120"   → expense rice ₹120
-"2000"       → amount only → low confidence
+3. TENGLISH (Telugu + English) — Andhra Pradesh / Telangana:
+   Cash Sale:   "Ramesh ki 2kg pindi ammanu 200 rupees"     → income ₹200,  item=pindi, qty=2kg
+   Cash Sale:   "customer ki biyyam 5kg ammamu 600"         → income ₹600,  item=biyyam, qty=5kg
+   Udhaar Sale: "Ramesh ki 2kg biyyam ichanu"               → income, category=Udhaar, person=Ramesh
+   Udhaar Sale: "Suresh ki nune litre ichanu"               → income, category=Udhaar, person=Suresh
+   Expense:     "50kg biyyam konnanu 50000"                 → expense ₹50000, item=biyyam, qty=50kg
 
-═══ QUANTITY vs PRICE (critical) ════════════════════════════════════════════════
-If a number is followed by g/kg/ml/l/gram/piece/nos → it is QUANTITY, NOT price.
-The price is always the last standalone number.
-"100g mulagu 80" → qty=100g, amount=80
-"2kg onion 80"   → qty=2kg, amount=80
-"5 kg biyyam 320" → qty=5kg, amount=320
+4. MANGLISH (Malayalam + English) — Kerala:
+   Cash Sale:   "Ramesh 2kg panjasara vitti 2000 kitti"     → income ₹2000, item=panjasara, qty=2kg
+   Cash Sale:   "customer 5kg ari vitti 600 kitti"          → income ₹600,  item=ari, qty=5kg
+   Udhaar Sale: "Ramesh nu 2kg panjasara koduthu"           → income, category=Udhaar, person=Ramesh
+   Udhaar Sale: "Suresh nu oru litre eṇṇa koduthu"         → income, category=Udhaar, person=Suresh
+   Expense:     "50kg panjasara vaangichi 50000"            → expense ₹50000, item=panjasara, qty=50kg
 
-═══ UDHAAR / CREDIT ════════════════════════════════════════════════════════════
-Udhaar = credit given to a customer. Signals: person name + amount + give verb.
-"Ramesh ko 500 udhaar diya" → udhaar, person=Ramesh, amount=500
-"Suresh ge 300 kotte"       → udhaar, person=Suresh, amount=300
-For udhaar: set type="income" (money owed TO shopkeeper), category="Udhaar"
+5. KANGLISH (Kannada + English) — Karnataka / Bangalore:
+   Cash Sale:   "Ramesh 2kg sakkare maarade 2000 sikkitu"   → income ₹2000, item=sakkare, qty=2kg
+   Cash Sale:   "customer ge akki 5kg maarode 600 banthu"   → income ₹600,  item=akki, qty=5kg
+   Udhaar Sale: "Ramesh ge 2kg sakkare kotte"               → income, category=Udhaar, person=Ramesh
+   Udhaar Sale: "Suresh ge halu litre kotte"                → income, category=Udhaar, person=Suresh
+   Expense:     "50kg sakkare tagondu 50000"                → expense ₹50000, item=sakkare, qty=50kg
+
+═══ VERB REFERENCE ══════════════════════════════════════════════════════════════
+EXPENSE verbs (shopkeeper pays):
+  Tamil:     vanginen / vangitten / vangirukkean / kodutten / pottaen
+  Hindi:     liya / kharida / le aya / bhara / kharcha kiya
+  Telugu:    konnanu / konnamu / kondi / kattanu
+  Malayalam: vaangichi / vaangirunnu / vaangi / koduththu
+  Kannada:   tagondu / tagondidde / kottidde
+  English:   bought / paid / purchased / spent
+
+INCOME verbs (shopkeeper receives cash):
+  Tamil:     vandhuchu / vanthuchu / kittachu / sale achu / vittaen / ammanaen
+  Hindi:     mila / aayi / becha / sale hua / customer ne diya
+  Telugu:    vacchindi / ammanu / ammamu / ichanu (customer pays)
+  Malayalam: kitti / kittichu / vitti / ammanu
+  Kannada:   sikkitu / banthu / maarode / hoda
+
+UDHAAR verbs (shopkeeper gives, customer pays later):
+  Tamil:     kudutten / kodutten (to person, no cash) / baki / udhar
+  Hindi:     diya (to person, no cash) / udhaar diya / baad mein
+  Telugu:    ichanu (to person, no cash received) / udhar ichanu
+  Malayalam: koduthu (to person) / udhar koduthu
+  Kannada:   kotte (to person, no cash) / sali kotte / udhar kotte
+
+═══ QUANTITY vs PRICE ═══════════════════════════════════════════════════════════
+Number followed by g/kg/ml/l/gram/piece = QUANTITY, not price.
+Last standalone number = PRICE.
+  "50kg sugar 50000"   → qty=50, unit=kg, amount=50000
+  "2kg sugar 2000"     → qty=2,  unit=kg, amount=2000
+  "100g mulagu 80"     → qty=100, unit=g, amount=80
+
+═══ UDHAAR AMOUNT RULE ══════════════════════════════════════════════════════════
+If no price is mentioned in an Udhaar entry, set amount=0.
+The Customers/Udhaar tab will handle the billing separately.
+  "Ramesh ku paal kudutten"  → amount=0, category=Udhaar, person=Ramesh, item=paal
 
 ═══ MULTI-ITEM ══════════════════════════════════════════════════════════════════
-Each item+amount = SEPARATE entry. NEVER merge.
-"petrol 500, arisi 120, paal 42" → 3 separate expense entries
+Each item = SEPARATE entry. Never merge.
+"petrol 500, arisi 120, paal 42" → 3 separate entries
 
 OUTPUT: JSON only. No markdown, no backticks, no extra text.
 {
@@ -230,12 +252,13 @@ OUTPUT: JSON only. No markdown, no backticks, no extra text.
   "confidence": "high" | "medium" | "low",
   "entries": [
     {
-      "item": "string (original spoken language — keep paal as paal, arisi as arisi)",
+      "item": "string (keep original spoken word — paal stays paal, arisi stays arisi)",
       "amount": number,
       "quantity": number | null,
       "unit": "g" | "kg" | "ml" | "l" | "pack" | "piece" | "unit" | null,
       "type": "income" | "expense",
-      "category": "Food" | "Groceries" | "Fuel" | "Salary" | "Rent" | "Sales" | "Shopping" | "Transport" | "Healthcare" | "Utilities" | "Education" | "Entertainment" | "Udhaar" | "General"
+      "category": "Food" | "Groceries" | "Fuel" | "Salary" | "Rent" | "Sales" | "Shopping" | "Transport" | "Healthcare" | "Utilities" | "Education" | "Entertainment" | "Udhaar" | "General",
+      "customer_name": "string | null (only for Udhaar entries — the person's name)"
     }
   ]
 }`;
