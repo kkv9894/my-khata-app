@@ -671,7 +671,7 @@ const sanitize = (s: string) => s.replace(/\s+/g, ' ').replace(/[|]+/g, ' ').tri
 
 // ── F4: Micro-Inventory — localStorage-backed item tracker ────────────────────
 const INVENTORY_KEY = 'khata_inventory'
-interface InventoryItem { name: string; qty: number; unit: string; lastUpdated: string }
+interface InventoryItem { name: string; qty: number; unit: string; unitPrice: number; lastUpdated: string }
 type InventoryMap = Record<string, InventoryItem>
 
 // Items that typically need restocking alerts (threshold in units bought)
@@ -690,21 +690,41 @@ const updateInventory = (
   quantity: number | null,
   unit: string | null,
   txType: 'income' | 'expense',
-  inv: InventoryMap
-): { updated: InventoryMap; lowStock: string[] } => {
+  inv: InventoryMap,
+  totalPrice?: number   // total amount paid — used to calculate unit price on purchase
+): { updated: InventoryMap; lowStock: string[]; autoAmount?: number } => {
   if (!quantity || quantity <= 0) return { updated: inv, lowStock: [] }
   const key = description.toLowerCase().trim()
-  const prev = inv[key] ?? { name: description, qty: 0, unit: unit || 'unit', lastUpdated: '' }
-  const delta = txType === 'expense' ? quantity : -quantity // expense=buy=add; income=sell=subtract
+  const prev = inv[key] ?? { name: description, qty: 0, unit: unit || 'unit', unitPrice: 0, lastUpdated: '' }
+  const delta = txType === 'expense' ? quantity : -quantity
+
+  // When buying stock with a known price → calculate and store unit price
+  // e.g. "50kg sugar 50000" → unitPrice = 50000/50 = ₹1000/kg
+  const newUnitPrice = (txType === 'expense' && totalPrice && totalPrice > 0 && quantity > 0)
+    ? Math.round(totalPrice / quantity)
+    : (prev.unitPrice || 0)
+
   const newQty = Math.max(0, prev.qty + delta)
+
+  // When selling → auto-calculate sale amount from stored unit price
+  // e.g. "sold 2kg sugar" → autoAmount = 2 × 1000 = ₹2000
+  const autoAmount = (txType === 'income' && newUnitPrice > 0)
+    ? Math.round(quantity * newUnitPrice)
+    : undefined
+
   const updated: InventoryMap = {
     ...inv,
-    [key]: { name: description, qty: newQty, unit: unit || prev.unit, lastUpdated: new Date().toISOString() }
+    [key]: {
+      name:       description,
+      qty:        newQty,
+      unit:       unit || prev.unit,
+      unitPrice:  newUnitPrice,
+      lastUpdated: new Date().toISOString()
+    }
   }
   const lowStock = newQty <= RESTOCK_THRESHOLD ? [description] : []
-  return { updated, lowStock }
+  return { updated, lowStock, autoAmount }
 }
-
 const MORE_TABS = [
   { tab: 'reports'   as Tab, icon: <FileBarChart size={16} />, label: 'Reports',   business: false },
   { tab: 'customers' as Tab, icon: <Users size={16} />,        label: 'Udhaar',    business: false },
@@ -1247,8 +1267,17 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
             speakSaved(e.item, e.amount)
             // F4: Micro-Inventory — track qty, alert if stock depleted
             if (e.quantity && e.quantity > 0) {
-              const { updated, lowStock } = updateInventory(e.item, e.quantity, e.unit, e.type as 'income' | 'expense', inventory)
-              setInventory(updated); saveInventory(updated)
+  const { updated, lowStock, autoAmount } = updateInventory(
+    e.item, e.quantity, e.unit, e.type as 'income' | 'expense', inventory,
+    e.type === 'expense' ? e.amount : undefined  // pass total price only on purchase
+  )
+  setInventory(updated); saveInventory(updated)
+
+  // If selling and no price was spoken, use auto-calculated price from inventory
+  if (e.type === 'income' && autoAmount && autoAmount > 0 && e.amount === 0) {
+    e.amount = autoAmount
+    console.log(`[AutoPrice] ${e.quantity}${e.unit} ${e.item} → ₹${autoAmount} (₹${Math.round(autoAmount/e.quantity)}/unit)`)
+  }
               if (lowStock.length > 0) {
                 setLowStockAlerts(lowStock)
                 speakLowStock(lowStock[0])
@@ -1606,7 +1635,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
                     if (result.success) {
                       savedCount++
                       // F4: update inventory per saved item
-                      const { updated, lowStock } = updateInventory(item.description, null, null, item.type, inv)
+                      const { updated, lowStock } = updateInventory(item.description, null, null, item.type, inv, undefined)
                       inv = updated
                       if (lowStock.length > 0) {
                         setLowStockAlerts(lowStock)
