@@ -646,7 +646,10 @@ const removeAmountOnly = (text: string): string => {
   for (const [pat] of INDIAN_NUMBERS) r = r.replace(pat, ' ')
   r = r.replace(/₹\s*[\d,]+(\.\d+)?/g, '')
   r = r.replace(/\d{1,3}(?:,\d{2,3})+/g, '')
-  r = r.replace(/\d+\.?\d*\s*(k|l|lac|lakh|cr|crore)/gi, '')
+  r = r.replace(/\d+\.?\d*\s*(k(?!g)|l(?!tr|itre)|lac|lakh|cr|crore)/gi, '')
+  // Remove quantity+unit patterns like "50kg", "100g", "500ml" entirely
+  r = r.replace(/\d+(?:\.\d+)?\s*(kgs?|kg|grams?|g\b|mls?|ml|litres?|ltr?s?|l\b|pieces?|pcs?|packets?|pkt|nos?|units?|dozen)/gi, '')
+  r = r.replace(/\b(add|update|stock)\b/gi, '') // strip command words
   r = r.replace(/\d+(\.\d+)?/g, '')
   return r.replace(/\s+/g, ' ').trim()
 }

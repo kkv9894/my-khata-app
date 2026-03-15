@@ -132,12 +132,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const transcribePrompt = `You are Ziva, a voice transcription engine for ZivaKhata, an Indian shopkeeper ledger app.
 
 The user recorded a voice note in ${langName} or a mix of ${langName} and English.
-Code-switching is extremely common in India — users freely mix English words with regional grammar.
+Code-switching is extremely common in India.
 
 YOUR TASK: Transcribe the audio EXACTLY as spoken.
 - Keep original words (do not translate)
 - Keep mixed language as-is (e.g. "milk ku 50 rupees" stays as "milk ku 50 rupees")
 - Write numbers as digits (e.g. "fifty" -> 50, "five hundred" -> 500)
+- CRITICAL: Weight/quantity units must be transcribed accurately:
+  "fifty kg" -> "50 kg", "hundred grams" -> "100 g", "five hundred ml" -> "500 ml"
+  Never merge a number and unit into a different number (e.g. "50 kg" must NOT become "850g")
 - Remove filler sounds (um, uh, ah) but keep all meaningful words
 - If audio is silent or completely inaudible, return empty string only
 
