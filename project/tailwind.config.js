@@ -41,9 +41,10 @@ export default {
       },
       // ── Keyframes for mic pulse ring ─────────────────────────────────────
       keyframes: {
+        // Uses ONLY transform + opacity — both GPU-composited, zero repaint
         'ziva-ping': {
-          '0%':   { transform: 'scale(1)',    opacity: '0.8' },
-          '100%': { transform: 'scale(1.65)', opacity: '0'   },
+          '0%':   { transform: 'scale(1)',    opacity: '0.7', willChange: 'transform, opacity' },
+          '100%': { transform: 'scale(1.7)', opacity: '0'                                     },
         },
         'slide-up': {
           from: { transform: 'translateY(100%)', opacity: '0' },
@@ -51,7 +52,7 @@ export default {
         },
       },
       animation: {
-        'ziva-ping': 'ziva-ping 1.1s cubic-bezier(0.4,0,0.6,1) infinite',
+        'ziva-ping': 'ziva-ping 1.2s ease-out infinite',
         'slide-up':  'slide-up 0.3s ease-out',
       },
     },

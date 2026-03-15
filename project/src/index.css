@@ -34,19 +34,19 @@ html, body, #root {
 
 /* ── Mic button states ────────────────────────────────────────────────────── */
 
-/* Idle: cyan ring outline */
+/* Idle: thin cyan ring via outline — zero repaint, no box-shadow */
 .mic-idle {
-  box-shadow:
-    0 0 0 3px var(--cyan-border),
-    0 8px 32px rgba(0,0,0,0.5);
+  outline: 3px solid rgba(0, 229, 255, 0.25);
+  outline-offset: 2px;
 }
 
-/* Listening: heavy cyan glow + Tailwind's animate-ziva-ping handles the ring  */
+/* Listening: static cyan ring via outline (no animation here — pulse ring
+   handles the glow effect via transform+opacity on a sibling element)      */
 .mic-listening {
-  box-shadow:
-    0 0 0 4px var(--cyan),
-    0 0 28px 6px rgba(0, 229, 255, 0.55),
-    0 0 56px 12px rgba(0, 229, 255, 0.25);
+  outline: 3px solid rgba(0, 229, 255, 0.9);
+  outline-offset: 2px;
+  /* will-change tells the browser to promote this to its own GPU layer     */
+  will-change: transform;
 }
 
 /* ── Slide-up animation (kept from original) ─────────────────────────────── */

@@ -19,7 +19,7 @@ import Settings from './Settings'
 
 type SupportedLanguage = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml'
 type TransactionType   = 'income' | 'expense'
-type Tab = 'home' | 'transactions' | 'dashboard' | 'reports' | 'chat' | 'customers' | 'insights' | 'staff' | 'settings'
+type Tab = 'home' | 'transactions' | 'dashboard' | 'reports' | 'chat' | 'customers' | 'insights' | 'staff' | 'settings' | 'inventory'
 
 interface TransactionDraft {
   amount: string
@@ -703,20 +703,168 @@ const updateInventory = (
 }
 
 const MORE_TABS = [
-  { tab: 'reports'   as Tab, icon: <FileBarChart size={16} />, label: 'Reports'  },
-  { tab: 'customers' as Tab, icon: <Users size={16} />,        label: 'Udhaar'   },
-  { tab: 'insights'  as Tab, icon: <Brain size={16} />,        label: 'Insights' },
-  { tab: 'staff'     as Tab, icon: <ShieldCheck size={16} />,  label: 'Staff'    },
-  { tab: 'settings'  as Tab, icon: <Settings2 size={16} />,    label: 'Settings' },
+  { tab: 'reports'   as Tab, icon: <FileBarChart size={16} />, label: 'Reports',   business: false },
+  { tab: 'customers' as Tab, icon: <Users size={16} />,        label: 'Udhaar',    business: false },
+  { tab: 'inventory' as Tab, icon: <Package size={16} />,      label: 'Inventory', business: true  },
+  { tab: 'insights'  as Tab, icon: <Brain size={16} />,        label: 'Insights',  business: true  },
+  { tab: 'staff'     as Tab, icon: <ShieldCheck size={16} />,  label: 'Staff',     business: true  },
+  { tab: 'settings'  as Tab, icon: <Settings2 size={16} />,    label: 'Settings',  business: false },
 ]
 
-// ─── Component ─────────────────────────────────────────────────────────────────
+// ── InventoryView — Full-screen inventory manager (Business only) ──────────────
+function InventoryView({ inventory, onClear, ui }: {
+  inventory: InventoryMap
+  onClear: () => void
+  ui: typeof UI['en']
+}) {
+  const items = Object.values(inventory)
+  const low   = items.filter(i => i.qty <= 0)
+  const ok    = items.filter(i => i.qty > 0)
+
+  return (
+    <div className="flex h-full flex-col overflow-y-auto bg-navy-900 px-4 py-4 gap-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-white flex items-center gap-2">
+            <Package size={20} className="text-cyan" /> {ui.inventory}
+          </h2>
+          <p className="text-[10px] text-slate-400 mt-0.5">{ui.autoTracked}</p>
+        </div>
+        {items.length > 0 && (
+          <button onPointerDown={onClear}
+            className="rounded-xl bg-red-900/40 border border-red-700/40 px-3 py-1.5 text-[10px] font-black text-red-400 active:scale-95 transition-transform">
+            {ui.clearAll}
+          </button>
+        )}
+      </div>
+
+      {items.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-20">
+          <Package size={48} className="text-navy-600" />
+          <p className="text-center text-sm font-bold text-slate-500">{ui.noInventory}</p>
+          <p className="text-center text-xs text-slate-600 max-w-xs">
+            Inventory is auto-tracked when you record voice transactions.
+          </p>
+        </div>
+      ) : (
+        <>
+          {low.length > 0 && (
+            <div className="rounded-2xl border border-red-700/40 bg-red-900/20 p-4">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-red-400">⚠ {ui.outOfStock}</p>
+              <div className="flex flex-wrap gap-2">
+                {low.map(item => (
+                  <span key={item.name} className="rounded-full bg-red-900/50 border border-red-700/40 px-3 py-1 text-xs font-black text-red-300">
+                    {item.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {ok.length > 0 && (
+            <div className="rounded-2xl border border-navy-600 bg-navy-800 overflow-hidden">
+              <p className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">{ui.inStock}</p>
+              {ok.map((item, i) => (
+                <div key={item.name}>
+                  {i > 0 && <div className="mx-4 h-px bg-navy-700" />}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <p className="text-sm font-black text-white capitalize">{item.name}</p>
+                      <p className="text-[10px] text-slate-400">
+                        {new Date(item.lastUpdated).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-cyan/10 border border-cyan/20 px-3 py-1 text-sm font-black text-cyan">
+                      {item.qty}{item.unit}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-navy-600 bg-navy-800 p-4 flex justify-between">
+            <div className="text-center">
+              <p className="text-2xl font-black text-white">{items.length}</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest">{ui.totalItems}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-black text-green-400">{ok.length}</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest">{ui.inStock}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-black text-red-400">{low.length}</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest">{ui.outOfStock}</p>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── UI label translations — bottom nav, menu items, action buttons ────────────
+// Keep keys in English; values are the localised display text.
+// Mixed English is intentional and expected (e.g. "Scan Bill" stays universal).
+const UI: Record<SupportedLanguage, {
+  home: string; history: string; dashboard: string; chat: string; more: string
+  reports: string; udhaar: string; inventory: string; insights: string; staff: string; settings: string
+  scanBill: string; pnl: string; moreFeatures: string
+  lowStock: string; outOfStock: string; inStock: string; totalItems: string
+  noInventory: string; clearAll: string; autoTracked: string
+}> = {
+  en: {
+    home: 'Home',       history: 'History',   dashboard: 'Dashboard', chat: 'Chat',    more: 'More',
+    reports: 'Reports', udhaar: 'Udhaar',     inventory: 'Inventory', insights: 'Insights', staff: 'Staff', settings: 'Settings',
+    scanBill: 'Scan Bill', pnl: "Today's P&L", moreFeatures: 'More Features',
+    lowStock: 'Running Low', outOfStock: 'Out of Stock', inStock: 'In Stock', totalItems: 'Total Items',
+    noInventory: 'No inventory tracked yet', clearAll: 'Clear All', autoTracked: 'Auto-tracked from voice',
+  },
+  hi: {
+    home: 'होम',         history: 'इतिहास',    dashboard: 'डैशबोर्ड',  chat: 'चैट',     more: 'अधिक',
+    reports: 'रिपोर्ट',  udhaar: 'उधार',      inventory: 'इन्वेंटरी', insights: 'विश्लेषण', staff: 'स्टाफ', settings: 'सेटिंग',
+    scanBill: 'बिल स्कैन', pnl: 'आज का P&L', moreFeatures: 'अधिक सुविधाएं',
+    lowStock: 'कम स्टॉक', outOfStock: 'स्टॉक खत्म', inStock: 'उपलब्ध', totalItems: 'कुल आइटम',
+    noInventory: 'अभी कोई इन्वेंटरी नहीं', clearAll: 'सब हटाएं', autoTracked: 'आवाज़ से अपने आप ट्रैक',
+  },
+  ta: {
+    home: 'முகப்பு',     history: 'வரலாறு',    dashboard: 'டாஷ்போர்டு', chat: 'சாட்',   more: 'மேலும்',
+    reports: 'அறிக்கை', udhaar: 'கடன்',       inventory: 'சரக்கு',    insights: 'நுண்ணறிவு', staff: 'ஸ்டாஃப்', settings: 'அமைப்புகள்',
+    scanBill: 'பில் ஸ்கேன்', pnl: 'இன்றைய லாபம்', moreFeatures: 'மேலும் அம்சங்கள்',
+    lowStock: 'குறைந்த சரக்கு', outOfStock: 'சரக்கு இல்லை', inStock: 'கையிருப்பு', totalItems: 'மொத்த பொருட்கள்',
+    noInventory: 'இன்னும் சரக்கு இல்லை', clearAll: 'அனைத்தும் நீக்கு', autoTracked: 'குரலில் தானாக கண்காணிக்கப்பட்டது',
+  },
+  te: {
+    home: 'హోమ్',       history: 'చరిత్ర',    dashboard: 'డాష్‌బోర్డ్', chat: 'చాట్',   more: 'మరిన్ని',
+    reports: 'నివేదిక', udhaar: 'అప్పు',      inventory: 'సరుకు',     insights: 'అంతర్దృష్టులు', staff: 'సిబ్బంది', settings: 'సెట్టింగ్‌లు',
+    scanBill: 'బిల్ స్కాన్', pnl: 'నేటి లాభం', moreFeatures: 'మరిన్ని అంశాలు',
+    lowStock: 'తక్కువ స్టాక్', outOfStock: 'స్టాక్ లేదు', inStock: 'స్టాక్ ఉంది', totalItems: 'మొత్తం వస్తువులు',
+    noInventory: 'ఇంకా జాబితా లేదు', clearAll: 'అన్నీ తొలగించు', autoTracked: 'వాయిస్ నుండి స్వయంగా ట్రాక్',
+  },
+  kn: {
+    home: 'ಹೋಮ್',       history: 'ಇತಿಹಾಸ',   dashboard: 'ಡ್ಯಾಶ್‌ಬೋರ್ಡ್', chat: 'ಚಾಟ್', more: 'ಇನ್ನಷ್ಟು',
+    reports: 'ವರದಿ',    udhaar: 'ಸಾಲ',       inventory: 'ದಾಸ್ತಾನು',   insights: 'ಒಳನೋಟ', staff: 'ಸಿಬ್ಬಂದಿ', settings: 'ಸೆಟ್ಟಿಂಗ್‌ಗಳು',
+    scanBill: 'ಬಿಲ್ ಸ್ಕ್ಯಾನ್', pnl: 'ಇಂದಿನ ಲಾಭ', moreFeatures: 'ಇನ್ನಷ್ಟು ವೈಶಿಷ್ಟ್ಯಗಳು',
+    lowStock: 'ಕಡಿಮೆ ಸ್ಟಾಕ್', outOfStock: 'ಸ್ಟಾಕ್ ಇಲ್ಲ', inStock: 'ಸ್ಟಾಕ್ ಇದೆ', totalItems: 'ಒಟ್ಟು ವಸ್ತುಗಳು',
+    noInventory: 'ಇನ್ನೂ ದಾಸ್ತಾನು ಇಲ್ಲ', clearAll: 'ಎಲ್ಲ ತೆರವು', autoTracked: 'ಧ್ವನಿಯಿಂದ ಸ್ವಯಂ ಟ್ರ್ಯಾಕ್',
+  },
+  ml: {
+    home: 'ഹോം',        history: 'ചരിത്രം',  dashboard: 'ഡാഷ്‌ബോർഡ്', chat: 'ചാറ്റ്',  more: 'കൂടുതൽ',
+    reports: 'റിപ്പോർട്ട്', udhaar: 'കടം',   inventory: 'ഇൻവെൻ്ററി', insights: 'ഉൾക്കാഴ്ച', staff: 'ജീവനക്കാർ', settings: 'ക്രമീകരണം',
+    scanBill: 'ബിൽ സ്കാൻ', pnl: 'ഇന്നത്തെ ലാഭം', moreFeatures: 'കൂടുതൽ ഫീച്ചറുകൾ',
+    lowStock: 'കുറഞ്ഞ സ്റ്റോക്ക്', outOfStock: 'സ്റ്റോക്ക് ഇല്ല', inStock: 'സ്റ്റോക്ക് ഉണ്ട്', totalItems: 'ആകെ ഇനങ്ങൾ',
+    noInventory: 'ഇൻവെൻ്ററി ഒന്നുമില്ല', clearAll: 'എല്ലാം മായ്ക്കൂ', autoTracked: 'ശബ്ദത്തിൽ നിന്ന് ട്രാക്ക് ചെയ്തു',
+  },
+}
 export default function Home({ language = 'en', setLanguage }: { language?: SupportedLanguage; setLanguage?: (l: SupportedLanguage) => void }) {
   const { user }   = useAuth()
   const accountType = (user?.user_metadata?.account_type ?? 'business') as 'personal' | 'business'
   const roleCtx    = useRole()
   const isOwner    = roleCtx.isOwner
   const isStaff    = roleCtx.isStaff
+  // ── UI translations — updates instantly when language changes ────────────────
+  const ui = UI[language]
   const { pendingCount, saveTransaction } = useOfflineSync()
 
   const [activeTab,    setActiveTab]    = useState<Tab>('home')
@@ -1236,17 +1384,17 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
               </div>
             )}
 
-            {/* Mic button */}
-            <div className="relative flex items-center justify-center">
-              {/* Pulsating ring — only shown while listening */}
+            {/* Mic button — isolated layer, GPU-composited animation only */}
+            <div className="relative flex items-center justify-center isolate">
+              {/* Pulse ring: transform+opacity ONLY — no box-shadow, no filter */}
               {isRecording && (
-                <span className="absolute inline-flex h-48 w-48 rounded-full bg-cyan/20 animate-ziva-ping" />
+                <span className="absolute inline-flex h-48 w-48 rounded-full bg-cyan/15 animate-ziva-ping will-change-transform" />
               )}
               <button
                 onMouseDown={handleHoldStart} onMouseUp={handleHoldEnd} onMouseLeave={handleHoldEnd}
                 onTouchStart={handleHoldStart} onTouchEnd={handleHoldEnd} onTouchCancel={handleHoldEnd}
                 disabled={isBusy || rateLimited}
-                className={`relative flex h-48 w-48 touch-none select-none items-center justify-center rounded-full transition-all
+                className={`relative flex h-48 w-48 touch-none select-none items-center justify-center rounded-full transition-transform duration-150 will-change-transform
                   ${isRecording
                     ? 'scale-110 bg-navy-800 mic-listening'
                     : 'bg-navy-800 mic-idle active:scale-95'}
@@ -1263,7 +1411,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
                 className="flex items-center gap-2 rounded-2xl border-2 border-navy-600 bg-navy-800 px-5 py-3 shadow-sm active:scale-95"
               >
                 <ScanLine size={18} className="text-cyan" />
-                <span className="text-sm font-bold text-slate-300">Scan Bill</span>
+                <span className="text-sm font-bold text-slate-300">{ui.scanBill}</span>
               </button>
 
               <button
@@ -1274,7 +1422,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
                 {pnlLoading
                   ? <Loader2 size={18} className="animate-spin text-navy-950" />
                   : <Zap size={18} className="text-navy-950" />}
-                <span className="text-sm font-bold text-navy-950">Today's P&L</span>
+                <span className="text-sm font-bold text-navy-950">{ui.pnl}</span>
               </button>
             </div>
 
@@ -1299,27 +1447,27 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
         {activeTab === 'insights'     && <BusinessInsights />}
         {activeTab === 'staff'        && <StaffManager />}
         {activeTab === 'settings'     && <Settings language={language} setLanguage={setLanguage ?? (() => {})} />}
+        {activeTab === 'inventory'    && accountType === 'business' && <InventoryView inventory={inventory} ui={ui} onClear={() => { setInventory({}); saveInventory({}) }} />}
       </div>
 
       {/* Bottom nav */}
       <nav className="mx-4 mb-6 flex justify-around rounded-[2.5rem] border border-navy-600 bg-navy-800/90 p-2 shadow-2xl backdrop-blur-md">
         {([
-          ['home',         <Mic size={22} />],
-          ['transactions', <TrendingUp size={22} />],
-          ['dashboard',    <LayoutDashboard size={22} />],
-          ['chat',         <MessageSquare size={22} />],
-        ] as [Tab, JSX.Element][]).map(([tab, icon]) => (
+          ['home',         <Mic size={22} />,             ui.home],
+          ['transactions', <TrendingUp size={22} />,      ui.history],
+          ['dashboard',    <LayoutDashboard size={22} />, ui.dashboard],
+          ['chat',         <MessageSquare size={22} />,   ui.chat],
+        ] as [Tab, JSX.Element, string][]).map(([tab, icon, label]) => (
           <button
             key={tab}
             onClick={() => {
-              if (tab === 'transactions') {
-                setRefreshKey(k => k + 1)
-              }
+              if (tab === 'transactions') setRefreshKey(k => k + 1)
               setActiveTab(tab)
             }}
-            className={`rounded-full p-4 transition-all ${activeTab === tab ? 'bg-cyan text-navy-950 shadow-cyan-glow' : 'text-slate-400'}`}
+            className={`flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all ${activeTab === tab ? 'bg-cyan text-navy-950 shadow-cyan-glow' : 'text-slate-400'}`}
           >
             {icon}
+            <span className="text-[9px] font-black leading-none">{label}</span>
           </button>
         ))}
 
@@ -1327,9 +1475,10 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
           <div className="relative">
             <button
               onClick={() => setShowMoreMenu(v => !v)}
-              className={`rounded-full p-4 transition-all ${MORE_TABS.some(m => m.tab === activeTab) ? 'bg-cyan text-navy-950 shadow-cyan-glow' : 'text-slate-400'}`}
+              className={`flex flex-col items-center gap-0.5 rounded-2xl px-3 py-2 transition-all ${MORE_TABS.some(m => m.tab === activeTab) ? 'bg-cyan text-navy-950 shadow-cyan-glow' : 'text-slate-400'}`}
             >
               <Brain size={22} />
+              <span className="text-[9px] font-black leading-none">{ui.more}</span>
             </button>
           </div>
         )}
@@ -1340,19 +1489,31 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
         <>
           <div className="fixed inset-0 z-[190]" onClick={() => setShowMoreMenu(false)} />
           <div className="fixed bottom-24 right-6 z-[200] w-52 overflow-hidden rounded-3xl border border-navy-600 bg-navy-800 shadow-2xl">
-            <p className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">More Features</p>
-            {MORE_TABS.map(({ tab, icon, label }) => (
-              <button
-                key={tab}
-                onTouchStart={() => { setActiveTab(tab); setShowMoreMenu(false) }}
-                onClick={() => { setActiveTab(tab); setShowMoreMenu(false) }}
-                className={`flex w-full items-center gap-3 px-4 py-3.5 text-sm font-bold active:bg-navy-700 ${
-                  activeTab === tab ? 'bg-cyan text-navy-950' : 'text-slate-300'
-                }`}
-              >
-                {icon} {label}
-              </button>
-            ))}
+            <p className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">{ui.moreFeatures}</p>
+            {MORE_TABS
+              .filter(m => !m.business || accountType === 'business')
+              .map(({ tab, icon, label }) => {
+                // Map static label key to translated ui label
+                const translated =
+                  tab === 'reports'   ? ui.reports   :
+                  tab === 'customers' ? ui.udhaar     :
+                  tab === 'inventory' ? ui.inventory  :
+                  tab === 'insights'  ? ui.insights   :
+                  tab === 'staff'     ? ui.staff      :
+                  tab === 'settings'  ? ui.settings   : label
+                return (
+                  <button
+                    key={tab}
+                    onTouchStart={() => { setActiveTab(tab); setShowMoreMenu(false) }}
+                    onClick={() => { setActiveTab(tab); setShowMoreMenu(false) }}
+                    className={`flex w-full items-center gap-3 px-4 py-3.5 text-sm font-bold active:bg-navy-700 ${
+                      activeTab === tab ? 'bg-cyan text-navy-950' : 'text-slate-300'
+                    }`}
+                  >
+                    {icon} {translated}
+                  </button>
+                )
+              })}
           </div>
         </>
       )}

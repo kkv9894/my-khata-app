@@ -1,24 +1,21 @@
-﻿// lib/gemini.ts
-
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+﻿// src/lib/gemini.ts
+// ✅ SECURE: All Gemini API calls go through /api/gemini (Vercel serverless).
+// No API keys are exposed to the browser. Zero VITE_ keys needed.
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INTERNAL: Shared fetch helper with AbortController timeout
+// INTERNAL: Shared proxy helper — calls our /api/gemini serverless function
 // ─────────────────────────────────────────────────────────────────────────────
 const geminiPost = async (body: object, timeoutMs = 15000): Promise<string> => {
-  if (!GEMINI_API_KEY) throw new Error("Missing VITE_GEMINI_API_KEY in .env");
-
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs + 2000);
 
   let response: Response;
   try {
-    response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
+    response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ action: 'post', payload: { body, timeoutMs } }),
     });
   } catch (err: any) {
     clearTimeout(timer);
@@ -27,12 +24,14 @@ const geminiPost = async (body: object, timeoutMs = 15000): Promise<string> => {
   }
   clearTimeout(timer);
 
+  if (response.status === 429) throw new Error('429 Rate limit');
   if (!response.ok) {
-    const errBody = await response.text().catch(() => '');
-    throw new Error(`Gemini ${response.status}: ${errBody.slice(0, 120)}`);
+    const errBody = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(errBody?.error ?? `Gemini proxy ${response.status}`);
   }
+
   const data = await response.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  return data?.text ?? '';
 };
 
 const extractJson = (raw: string): any => {
@@ -43,16 +42,12 @@ const extractJson = (raw: string): any => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ✅ F1 — SMART CLERK: Detect if voice is a Query or Transaction
-// Called BEFORE analyzeTransaction so questions never open the save form.
-// Returns { intent: 'query', answer: string } or { intent: 'transaction' }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function detectVoiceIntent(
   text: string,
   transactions: any[]
 ): Promise<{ intent: 'query' | 'transaction'; answer?: string }> {
-  if (!GEMINI_API_KEY) return { intent: 'transaction' }; // no key → treat as transaction
 
-  // Fast local heuristic — avoid an API call for obvious transactions
   const QUERY_SIGNALS = [
     // English
     'how much','total','what is','what are','who owes','show me','tell me',
@@ -76,44 +71,27 @@ export async function detectVoiceIntent(
   const looksLikeQuery = QUERY_SIGNALS.some(s => lo.includes(s.toLowerCase()));
   const hasAmount = /₹|\d+\s*(rs|rupee|rupe|paisa)/i.test(text) || /\d{2,}/.test(text);
 
-  // If it has a clear amount AND NO query signal → skip AI, treat as transaction
   if (hasAmount && !looksLikeQuery) return { intent: 'transaction' };
-  // If no query signals at all → transaction
   if (!looksLikeQuery) return { intent: 'transaction' };
 
-  // Call Gemini to classify and answer
   const txSummary = transactions.slice(0, 100).map(t =>
     `${t.transaction_date}: ${t.type} ₹${t.amount} - ${t.description || 'Voice Entry'}`
   ).join('\n');
 
-  const prompt = `You are Ziva, a highly intelligent, fast, and friendly financial AI assistant for the "My Khata" app. You help Indian shopkeepers and individuals track their money via voice.
-
-IDENTITY: If the user asks "who are you", "what is your name", "aap kaun ho", "neenga yaar", or any equivalent in any language, respond with intent="query" and answer="I am Ziva, your smart ledger assistant. How can I help you today?"
-
+  const prompt = `You are Ziva, the Smart Clerk for "ZivaKhata", an Indian small business ledger app.
 The user spoke: "${text}"
 
 Recent transactions (newest first):
 ${txSummary || 'No transactions yet.'}
 
-TASK: Decide if this is a QUERY (user wants to know something) or a TRANSACTION (user is recording a sale/expense).
+IDENTITY: If the user asks "who are you", "what is your name", "aap kaun ho", "neenga yaar", or similar in any language, respond with intent="query" and answer="I am Ziva, your smart ledger assistant. How can I help you today?"
 
-QUERY examples (user wants information):
-- "who owes me the most?" → query
-- "what are today's total sales?" → query
-- "kitna income hua is hafte?" → query
-- "evvalavu selavaachu indha madam?" → query
-- "show me this month's expenses" → query
-- "balance kya hai?" → query
+TASK: Decide if this is a QUERY (user wants info) or a TRANSACTION (user is recording money).
 
-TRANSACTION examples (user is recording money):
-- "petrol 500 vangitten" → transaction
-- "milk 45 bought" → transaction
-- "rent paid 8000" → transaction
-- "customer gave 2000" → transaction
-- "rice ₹120" → transaction
+QUERY examples: "who owes me the most?" "kitna income hua is hafte?" "evvalavu selavaachu indha madam?" "balance kya hai?"
+TRANSACTION examples: "petrol 500 vangitten" "milk 45 bought" "rent paid 8000" "rice ₹120"
 
-If QUERY: answer it using the transaction data above. Keep answer to 1-2 short sentences.
-Use ₹ for amounts. Reply in the SAME LANGUAGE as the user spoke.
+If QUERY: answer using transaction data. Keep answer to 1-2 short sentences. Use ₹ for amounts. Reply in SAME LANGUAGE as user.
 
 OUTPUT: JSON only, no markdown.
 {"intent": "query" | "transaction", "answer": "string (only if intent=query, else null)"}`;
@@ -131,159 +109,120 @@ OUTPUT: JSON only, no markdown.
     return { intent: 'transaction' };
   } catch (err) {
     console.warn('detectVoiceIntent error (safe fallback):', err);
-    return { intent: 'transaction' }; // safe fallback — never block saves
+    return { intent: 'transaction' };
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ✅ analyzeTransaction — voice → structured financial entries
-// F7: Enhanced code-switching prompt — Tanglish/Hinglish/Telugish/Kannglish/
-//     Malayalish + non-standard grammar + missing verb patterns + number words
+// F7: Full code-switching — Tanglish/Hinglish/Telugish/Kanglish/Malayalish
 // ─────────────────────────────────────────────────────────────────────────────
 export async function analyzeTransaction(text: string, accountType: 'personal' | 'business' = 'business') {
-  if (!GEMINI_API_KEY) { console.error("Missing Gemini API Key"); return null; }
 
-  // Dynamic persona based on account type
   const personaContext = accountType === 'business'
-    ? `You are Ziva, a sharp and professional shop assistant AI for "My Khata". You help Indian shopkeepers track sales, expenses, Udhaar (credit), and inventory via voice. Be precise and fast.`
-    : `You are Ziva, a friendly personal finance coach AI for "My Khata". You help individuals track daily expenses, salary, and savings via voice. Be warm and encouraging.`
+    ? `You are Ziva, a sharp and professional shop assistant AI for "ZivaKhata". You help Indian shopkeepers track sales, expenses, Udhaar (credit), and inventory via voice. Be precise and fast.`
+    : `You are Ziva, a friendly personal finance coach AI for "ZivaKhata". You help individuals track daily expenses, salary, and savings via voice. Be warm and encouraging.`;
 
   const systemPrompt = `${personaContext}
 Analyze this voice input: "${text}"
 
-LANGUAGE: The user speaks in English, Hindi, Tamil, Telugu, Kannada, Malayalam,
-OR any mixed dialect: Tanglish, Hinglish, Kannglish, Telugish, Malayalish,
-or any code-switched combination. Handle ALL natively.
+═══ CRITICAL: INDIAN CODE-SWITCHING LANGUAGE RULE ══════════════════════════════
+Users speak in HEAVILY MIXED code-switched languages. They freely combine English
+words (milk, rupees, balance, rent, rice, petrol, recharge) with regional Indian
+grammar and verbs. This is NOT broken language — it is normal Indian urban speech.
 
-═══ F7: CODE-SWITCHING MASTERY ════════════════════════════════════════════════
-Study these real Indian speech patterns — INCOMPLETE SENTENCES ARE NORMAL:
+YOUR ABSOLUTE RULE: NEVER fail due to bad grammar, mixed scripts, phonetic
+spelling, or incomplete sentences. ALWAYS extract the financial intent:
+  → Amount   (any number = money)
+  → Item     (what was bought/sold/paid)
+  → Action   (expense or income or udhaar/credit)
+  → Person   (for udhaar entries)
 
-TANGLISH (Tamil + English) — PRESENT PERFECT is most common in spoken Tamil:
-"rice vangirukkean 50"     → vangirukkean=I have bought (present perfect), expense rice ₹50
-"petrol pottaen 500"       → pottaen=I filled, expense petrol ₹500
-"milk vanginen 45"         → vanginen=I bought (simple past), expense milk ₹45
-"turmeric powder vangirukkean 100" → expense turmeric powder ₹100
-"chilli powder vangirukken 50"     → vangirukken=same as vangirukkean, expense chilli powder ₹50
-"rent kodutten 8000"       → kodutten=I paid, expense rent ₹8000
-"customer kitta 2000 vandhuchu"    → vandhuchu=received, income ₹2000
-"100g mulagu 80 arisi 120 paal 42" → 3 items: chilli ₹80, rice ₹120, milk ₹42
-"sambalam vandhuchu 15000" → sambalam=salary, income ₹15000
-"sale achu 5000"           → sales income ₹5000
-"petrol 500 pottaen, arisi 120 vangirukkean, paal 42 vangirukkean" → 3 separate expense entries
+The 5 code-switched dialects you MUST handle flawlessly:
 
-SARVAM OUTPUTS ENGLISH WORDS IN TAMIL SCRIPT — treat identically to English:
-"மை்ஸ் vangirukkean 50"   → மை்ஸ் is Tamil-script transliteration of "rice", expense rice ₹50
-"மிளகாய் தூள் vangirukken 50" → expense chilli powder ₹50
-"மஞ்சள் தூள் vangirukkean 100" → expense turmeric powder ₹100
-"பெட்ரோல் pottaen 500"    → expense petrol ₹500
+1. TANGLISH (Tamil + English) — spoken by Tamil Nadu / Chennai users:
+   "Milk ku 50 rupees add pannu."
+   → Intent: Add Expense | Amount: 50 | Category: Groceries | Item: milk
+   More examples:
+   "rice vangirukkean 120"  → expense rice ₹120
+   "petrol pottaen 500"     → expense petrol ₹500
+   "customer kitta 2000 vandhuchu" → income ₹2000
+   "rent kodutten 8000"     → expense rent ₹8000
+   "sale achu 5000"         → income sales ₹5000
 
-TANGLISH VERB FORMS — DO NOT include these in the item name field:
-BOUGHT: vanginen / vangitten / vangirukkean / vangirukken / vangirukkiren / vangikiren / vangirukkirean
-PAID: kodutten / koduthen / kuduthen / bill katti / pottaen
-RECEIVED: vandhuchu / vanthuchu / vandhu / kittachu / sale achu
-Strip all verbs from item: "rice vangirukkean" → item="rice" not "rice vangirukkean"
+2. HINGLISH (Hindi + English) — spoken by North India / Hindi belt users:
+   "Ramesh ko 500 udhaar diya."
+   → Intent: Add Udhaar/Credit | Amount: 500 | Person: Ramesh
+   More examples:
+   "rice 120 le aya"        → expense rice ₹120
+   "salary aayi 25000"      → income salary ₹25000
+   "bijli ka bill bhara 800" → expense electricity ₹800
+   "doodh liya 42"          → expense milk ₹42
 
-HINGLISH (Hindi + English):
-"rice 120 le aya"          → expense rice ₹120
-"chai pee li 30 ka"        → expense tea ₹30
-"customer ne diya 2000"    → income ₹2000
-"salary aayi 25000"        → income salary ₹25000
-"bijli ka bill bhara 800"  → expense electricity ₹800
-"sabzi wale ko diya 250"   → expense vegetables ₹250
-"rice liya 50, atta liya 80, doodh liya 42" → 3 separate expense items
+3. TENGLISH (Telugu + English) — spoken by Andhra Pradesh / Telangana users:
+   "1000 rupees rent pay chesanu."
+   → Intent: Add Expense | Amount: 1000 | Category: Rent
+   More examples:
+   "biyyam konnanu 90"      → expense rice ₹90
+   "palu konnanu 42"        → expense milk ₹42
+   "salary vacchindi 18000" → income salary ₹18000
+   "customer icchindi 3000" → income ₹3000
 
-TELUGISH (Telugu + English):
-"biyyam konnanu 90"        → konnanu=I bought, expense rice ₹90
-"rice konnamu 120"         → konnamu=we bought, expense rice ₹120
-"salary vacchindi 18000"   → vacchindi=received, income ₹18000
-"kodi guddu 6 60 rupayalu" → 6 eggs ₹60, expense
-"palu konnanu 42, biyyam konnanu 90" → 2 separate expense items
+4. MANGLISH (Malayalam + English) — spoken by Kerala users:
+   "Phone recharge 200 rupees cheythu."
+   → Intent: Add Expense | Amount: 200 | Category: Recharge
+   More examples:
+   "paal vaangichi 42"      → expense milk ₹42
+   "salary kitti 20000"     → income salary ₹20000
+   "muringakka vaangi 35"   → expense drumstick ₹35
+   "rent koduththu 7000"    → expense rent ₹7000
 
-KANGLISH (Kannada + English):
-"akki tagondu 65"          → tagondu=I bought, expense rice ₹65
-"akki tagondidde 65"       → tagondidde=I have bought (present perfect), expense rice ₹65
-"halu tagondu 48"          → halu=milk, expense ₹48
-"rent kottidde 7000"       → kottidde=I have paid, expense rent ₹7000
-"customer sikkitu 3000"    → sikkitu=received, income ₹3000
+5. KANGLISH (Kannada + English) — spoken by Karnataka / Bangalore users:
+   "Suresh ge 300 rupees kotte."
+   → Intent: Add Udhaar/Credit | Amount: 300 | Person: Suresh
+   More examples:
+   "akki tagondu 65"        → expense rice ₹65
+   "halu tagondu 48"        → expense milk ₹48
+   "rent kottidde 7000"     → expense rent ₹7000
+   "customer sikkitu 3000"  → income ₹3000
 
-MALAYALISH (Malayalam + English):
-"paal vaangichi 42"        → vaangichi=I bought, expense milk ₹42
-"paal vaangirunnu 42"      → vaangirunnu=I had bought (past perfect), expense milk ₹42
-"salary kitti 20000"       → kitti=received, income ₹20000
-"muringakka vaangi 35"     → vaangi=bought, expense drumstick ₹35
-"rice vaangichi 80, paal vaangichi 42" → 2 separate expense items
+═══ VERB REFERENCE (strip these from item names) ════════════════════════════════
+EXPENSE verbs:
+  Tamil:     vanginen / vangitten / vangirukkean / vangirukken / kodutten / pottaen
+  Hindi:     liya / kharida / le aya / diya / bhara / kharcha kiya
+  Telugu:    konnanu / konnamu / kondi / ichanu / kattanu
+  Malayalam: vaangichi / vaangirunnu / vaangi / koduththu / cheythu
+  Kannada:   tagondu / tagondidde / kottidde / kharcha maadidde
+  English:   bought / paid / spent / got / purchased
 
-VERBLESS (item + price only — very common in Indian shops):
+INCOME verbs:
+  Tamil:     vandhuchu / vanthuchu / kittachu / sale achu / vandhu
+  Hindi:     mila / aayi / aaya / diya (received) / milaa
+  Telugu:    vacchindi / icchindi / vachindi / vachindhi
+  Malayalam: kitti / kittichu / kittunnu / vandhu
+  Kannada:   sikkitu / banthu / banthide / sikkidhe
+
+═══ VERBLESS PATTERNS (extremely common — default = expense) ════════════════════
 "milk 45"    → expense milk ₹45
 "rice 120"   → expense rice ₹120
 "2000"       → amount only → low confidence
-Default verbless = expense UNLESS context implies income
 
-NON-STANDARD GRAMMAR (grammatically wrong but financially clear):
-"me rice 50 bought" → expense rice ₹50
-"yesterday petrol 500 maeni paid" → expense petrol ₹500
-"customer 2000 ka diya aaj" → income ₹2000
+═══ QUANTITY vs PRICE (critical) ════════════════════════════════════════════════
+If a number is followed by g/kg/ml/l/gram/piece/nos → it is QUANTITY, NOT price.
+The price is always the last standalone number.
+"100g mulagu 80" → qty=100g, amount=80
+"2kg onion 80"   → qty=2kg, amount=80
+"5 kg biyyam 320" → qty=5kg, amount=320
 
+═══ UDHAAR / CREDIT ════════════════════════════════════════════════════════════
+Udhaar = credit given to a customer. Signals: person name + amount + give verb.
+"Ramesh ko 500 udhaar diya" → udhaar, person=Ramesh, amount=500
+"Suresh ge 300 kotte"       → udhaar, person=Suresh, amount=300
+For udhaar: set type="income" (money owed TO shopkeeper), category="Udhaar"
 
-═══ STEP 1 — IS THIS REAL FINANCE? ════════════════════════════════════════════
-REAL = amount (any form) + item/action. Verb optional.
-NOT REAL = pure conversation: "hello", "testing", "what is this", "okay sir"
-ALWAYS FINANCIAL if: ₹ symbol, OR Indian number word, OR financial verb present
-Indian text + number = ALMOST ALWAYS financial
-
-═══ STEP 2 — EXTRACT ALL ITEMS ════════════════════════════════════════════════
-Each item+amount = SEPARATE entry. NEVER merge separate items.
-CRITICAL: Keep item names in ORIGINAL SPOKEN LANGUAGE:
-  paal → paal   arisi → arisi   biyyam → biyyam   akki → akki   doodh → doodh
-
-Per item:
-- item: the THING purchased/sold — max 4 words, NO transaction verbs.
-  Strip from item: um/ah/okay/sir/madam AND all transaction verbs:
-  vangirukkean/vanginen/vangirukken/vangirukkiren (Tamil bought)
-  kodutten/koduthen/pottaen (Tamil paid/filled)
-  konnanu/konnamu/kondi (Telugu bought)
-  tagondu/tagondidde (Kannada bought)
-  vaangichi/vaangirunnu/vaangi (Malayalam bought)
-  le aya/liya/kharida (Hindi bought)
-  Example: "rice vangirukkean" → item="rice", "paal vaangichi" → item="paal"
-- amount: price in ₹ ONLY. weight/qty ≠ price
-- quantity: weight/count if given (100 for "100g mulagu 80"), else null
-- unit: g/kg/ml/l/pack/piece/unit/null
-- type: "income" | "expense"
-- category: Food/Groceries/Fuel/Salary/Rent/Sales/Shopping/Transport/Healthcare/Utilities/Education/Entertainment/General
-
-AMOUNT vs WEIGHT — CRITICAL. Weight/qty numbers are NEVER the price:
-RULE: If a number is immediately followed by a unit (g/kg/ml/l/gram/litre/piece/nos), it is QUANTITY not PRICE.
-The PRICE is always a standalone number without a unit suffix, usually the LAST number.
-
-"100g mulagu 80"         → qty=100g, amount=80    (100 is grams, 80 is price)
-"200g rice 60"           → qty=200g, amount=60    (200 is grams, 60 is price)  
-"200 gram rice 60"       → qty=200g, amount=60    (200 gram = quantity)
-"500ml oil 95"           → qty=500ml, amount=95   (500ml = quantity)
-"2kg onion 80"           → qty=2kg, amount=80     (2kg = quantity)
-"100g mulagu 80 arisi 120 paal 42" → 3 items: chilli qty=100g ₹80, rice ₹120, milk ₹42
-"100 grams mulagu vaangichi 80"    → qty=100g, amount=80 (vaangichi=bought in Malayalam)
-"200 gram rice vaangirunnu 60"     → qty=200g, amount=60
-"5 kg biyyam konnanu 320"          → qty=5kg, amount=320 (konnanu=bought in Telugu)
-"₹80 100g chilli"        → amount=80, qty=100g   (₹ explicitly marks price)
-"petrol 500"             → amount=500, qty=null   (no unit = pure price)
-"6 eggs 60"              → qty=6, unit=piece, amount=60
-
-⚠ NEVER use the weight/quantity number as the amount.
-⚠ If only weight given and no separate price number: set confidence=low, amount=0.
-
-═══ STEP 3 — CONFIDENCE ═══════════════════════════════════════════════════════
-high   = clear amount + clear item → auto-save
-medium = amount OK, item or type uncertain → show confirm
-low    = amount unclear OR pure amount only → ask user
-
-═══ STEP 4 — TYPE ══════════════════════════════════════════════════════════════
-INCOME verbs: received/got/earned/gave me/vanthuchu/kitti/mila/vandhu/sale/
-  sold/commission/bonus/vacchindi/banthu/kittichu/kottaru/sambalam/salary/
-  koduththaar/kuduthar/vandhuchu/vandhu/baki vandhu/udhar wapas/aaya
-EXPENSE verbs: spent/paid/bought/petrol/rent/bill/vanginen/kodutten/kharida/
-  diya/konnatlu/tagondu/kottidde/vaangichi/koduthu/le aya/kharcha/selavu
-Default = expense
+═══ MULTI-ITEM ══════════════════════════════════════════════════════════════════
+Each item+amount = SEPARATE entry. NEVER merge.
+"petrol 500, arisi 120, paal 42" → 3 separate expense entries
 
 OUTPUT: JSON only. No markdown, no backticks, no extra text.
 {
@@ -291,12 +230,12 @@ OUTPUT: JSON only. No markdown, no backticks, no extra text.
   "confidence": "high" | "medium" | "low",
   "entries": [
     {
-      "item": "string (original spoken language)",
+      "item": "string (original spoken language — keep paal as paal, arisi as arisi)",
       "amount": number,
       "quantity": number | null,
       "unit": "g" | "kg" | "ml" | "l" | "pack" | "piece" | "unit" | null,
       "type": "income" | "expense",
-      "category": "string"
+      "category": "Food" | "Groceries" | "Fuel" | "Salary" | "Rent" | "Sales" | "Shopping" | "Transport" | "Healthcare" | "Utilities" | "Education" | "Entertainment" | "Udhaar" | "General"
     }
   ]
 }`;
@@ -339,7 +278,7 @@ OUTPUT: JSON only. No markdown, no backticks, no extra text.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// callGemini — shared text-only helper (used by AiChat + BusinessInsights)
+// callGemini — shared text-only helper
 // ─────────────────────────────────────────────────────────────────────────────
 const callGemini = async (prompt: string): Promise<string> => {
   const text = await geminiPost({
@@ -351,35 +290,25 @@ const callGemini = async (prompt: string): Promise<string> => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// scanReceipt — Gemini Vision for receipt/bill scanning
+// scanReceipt — Gemini Vision via secure proxy
 // ─────────────────────────────────────────────────────────────────────────────
 export const scanReceipt = async (
   base64Image: string,
   mimeType: string
 ): Promise<{ amount: number; description: string; category: string; date: string } | null> => {
-  if (!GEMINI_API_KEY) { console.error("Missing Gemini API Key"); return null; }
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20000);
+    const timer = setTimeout(() => controller.abort(), 22000);
     let response: Response;
     try {
-      response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
+      response = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
-          contents: [{
-            parts: [
-              { inline_data: { mime_type: mimeType, data: base64Image } },
-              { text: `You are scanning a receipt for an Indian Khata (ledger) app.
-CATEGORIES: Groceries, Food, Transport, Fuel, Rent, Utilities, Shopping, Healthcare, Education, General
-Extract: total amount (number only), short description (max 6 words, English), best category, date (YYYY-MM-DD or today: ${new Date().toISOString().split('T')[0]}).
-OUTPUT: JSON only, no markdown.
-{"amount": 250, "description": "Grocery shopping", "category": "Groceries", "date": "2024-01-15"}` }
-            ]
-          }],
-          generationConfig: { temperature: 0.1, topP: 0.1, topK: 1 }
-        })
+          action: 'scan-receipt',
+          payload: { base64Image, mimeType },
+        }),
       });
     } catch (err: any) {
       clearTimeout(timer);
@@ -387,15 +316,18 @@ OUTPUT: JSON only, no markdown.
       throw err;
     }
     clearTimeout(timer);
-    if (!response.ok) throw new Error(`Gemini Vision ${response.status}`);
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData?.error ?? `Receipt scan failed: ${response.status}`);
+    }
     const data = await response.json();
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const raw: string = data?.raw ?? '';
     const parsed = extractJson(raw);
     return {
       amount:      parseFloat(parsed.amount) || 0,
       description: parsed.description || 'Receipt scan',
       category:    parsed.category || 'General',
-      date:        parsed.date || new Date().toISOString().split('T')[0]
+      date:        parsed.date || new Date().toISOString().split('T')[0],
     };
   } catch (err) {
     console.error('scanReceipt error:', err);
@@ -404,36 +336,104 @@ OUTPUT: JSON only, no markdown.
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// askFinancialAI — AI chat assistant
+// askFinancialAI — local-first, then Gemini for complex queries
 // ─────────────────────────────────────────────────────────────────────────────
+
+const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+
+const filterByPeriod = (txs: any[], period: 'today' | 'week' | 'month' | 'year') => {
+  const now = new Date();
+  const start = new Date();
+  if (period === 'today') { start.setHours(0, 0, 0, 0); }
+  else if (period === 'week') { start.setDate(now.getDate() - 7); start.setHours(0, 0, 0, 0); }
+  else if (period === 'month') { start.setDate(1); start.setHours(0, 0, 0, 0); }
+  else if (period === 'year') { start.setMonth(0, 1); start.setHours(0, 0, 0, 0); }
+  return txs.filter(t => new Date(t.created_at || t.transaction_date) >= start);
+};
+
+const tryLocalAnswer = (question: string, transactions: any[]): string | null => {
+  const q = question.toLowerCase().trim();
+
+  const isToday  = /today|aaj|innaiku|indu|இன்று|ఇవాళ|ಇಂದು|ഇന്ന്/.test(q);
+  const isWeek   = /week|hafte|vaaram|ebhara|வாரம்|వారం|ವಾರ|ആഴ്ച/.test(q);
+  const isMonth  = /month|mahine|madam|maasam|this month|மாதம்|నెల|ತಿಂಗಳು|മാസം/.test(q);
+  const isYear   = /year|saal|varudam|varsha|வருடம்|సంవత్సరం|ವರ್ಷ|വർഷം/.test(q);
+  const period: 'today'|'week'|'month'|'year' =
+    isToday ? 'today' : isWeek ? 'week' : isMonth ? 'month' : isYear ? 'year' : 'month';
+  const label = isToday ? 'today' : isWeek ? 'this week' : isYear ? 'this year' : 'this month';
+
+  const f = filterByPeriod(transactions, period);
+  const totalIn  = (txs: any[]) => txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+  const totalOut = (txs: any[]) => txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+
+  if (/spend|spent|expense|kharcha|selavu|खर्च|செலவு|ఖర్చు|ಖರ್ಚು|ചെലവ്/.test(q)) {
+    const amt = totalOut(f);
+    return amt === 0 ? `No expenses recorded ${label}.` : `Your total expenses ${label} are ${fmt(amt)}.`;
+  }
+  if (/income|earn|received|salary|sales|aaya|vandhuchu|वरुमानம்|వచ్చింది|ಆದಾಯ|വരുമാനം/.test(q)) {
+    const amt = totalIn(f);
+    return amt === 0 ? `No income recorded ${label}.` : `Your total income ${label} is ${fmt(amt)}.`;
+  }
+  if (/balance|net|profit|baaki|bakki|மீதி|నెట్|ಬ್ಯಾಲೆನ್ಸ್|ബാലൻസ്/.test(q)) {
+    const inc = totalIn(f); const exp = totalOut(f); const net = inc - exp;
+    return `${label.charAt(0).toUpperCase() + label.slice(1)}: Income ${fmt(inc)}, Expenses ${fmt(exp)}, Net ${net >= 0 ? '+' : ''}${fmt(net)}.`;
+  }
+  if (/summary|report|total|pnl|p&l|saaransh|சுருக்கம்|సారాంశం|ಸಾರಾಂಶ|സംഗ്രഹം/.test(q)) {
+    const inc = totalIn(f); const exp = totalOut(f); const net = inc - exp;
+    return `${label.charAt(0).toUpperCase() + label.slice(1)}: ${f.length} transactions, Income ${fmt(inc)}, Expenses ${fmt(exp)}, Net ${net >= 0 ? '+' : ''}${fmt(net)}.`;
+  }
+  if (/top|biggest|most|highest|largest/.test(q) && /expense|spend|category/.test(q)) {
+    const expenses = f.filter(t => t.type === 'expense');
+    if (!expenses.length) return `No expenses found ${label}.`;
+    const byCategory: Record<string, number> = {};
+    expenses.forEach(t => { const c = t.category_label || 'General'; byCategory[c] = (byCategory[c] || 0) + Number(t.amount); });
+    const top3 = Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c, a]) => `${c} ${fmt(a)}`).join(', ');
+    return `Top expense categories ${label}: ${top3}.`;
+  }
+  if (/how many|count|number of|kitne|எத்தனை|ఎన్ని|ಎಷ್ಟು|എത്ര/.test(q)) {
+    return `You have ${f.length} transactions recorded ${label}.`;
+  }
+  if (/last|latest|recent|கடைசி|చివరి|ಕೊನೆ|അവസാന/.test(q)) {
+    if (!transactions.length) return 'No transactions recorded yet.';
+    const last = transactions[0];
+    const d = new Date(last.created_at || last.transaction_date).toLocaleDateString('en-IN');
+    return `Last transaction: ${last.type === 'income' ? 'received' : 'spent'} ${fmt(last.amount)} for "${last.description || 'Voice entry'}" on ${d}.`;
+  }
+  if (/owe|owes|udhaar|udhar|credit|கடன்|అప్పు|ಸಾಲ|കടം/.test(q)) return null;
+
+  return null;
+};
+
 export const askFinancialAI = async (
   question: string,
   transactions: any[]
 ): Promise<string> => {
-  if (!GEMINI_API_KEY) return 'AI key not set. Add VITE_GEMINI_API_KEY to your .env file.';
+  if (!transactions.length) return 'No transactions found. Please add some transactions first.';
+
+  const localAnswer = tryLocalAnswer(question, transactions);
+  if (localAnswer) return localAnswer;
+
   try {
-    const txSummary = transactions.slice(0, 150).map(t =>
-      `${t.transaction_date}: ${t.type} ₹${t.amount} - ${t.description || 'Voice Entry'}`
-    ).join('\n');
+    const txSummary = transactions.slice(0, 100).map(t => {
+      const d = new Date(t.created_at || t.transaction_date);
+      return `${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}: ${t.type} ₹${t.amount} — ${t.description || 'Voice Entry'} [${t.category_label || 'General'}]`;
+    }).join('\n');
 
-    const prompt = `You are Ziva, a friendly and intelligent financial assistant for "My Khata", an Indian small-business ledger app. You are sharp, warm, and always helpful.
+    const prompt = `You are Ziva, a friendly and intelligent financial assistant for "ZivaKhata".
 Recent transactions (newest first):
-${txSummary || 'No transactions recorded yet.'}
+${txSummary}
 
-User asks: "${question}"
+User question: "${question}"
 
-Rules: Answer in 2-3 sentences max. Use ₹ for amounts. Be conversational and friendly — you are Ziva, their smart ledger assistant.
-If data is insufficient, say so clearly. Reply in the SAME language as the user.
-No markdown, no bullet points, no headers.`;
+Rules: Answer in 2-3 sentences max. Use ₹ for amounts. Be conversational and helpful.
+Reply in the SAME language as the question. No markdown, no bullet points.`;
 
     const answer = await callGemini(prompt);
-    return answer.trim() || 'No data found. Please add some transactions first.';
+    return answer.trim() || 'I couldn\'t find relevant data. Try asking about spending, income, or balance.';
   } catch (err: any) {
     console.error('askFinancialAI error:', err);
-    if (err?.message?.includes('429')) return 'AI is busy right now. Please wait a moment and try again.';
-    if (err?.message?.includes('400')) return 'Could not process that question. Try rephrasing it.';
-    if (err?.message?.includes('API key') || err?.message?.includes('Missing')) return 'AI key issue — check VITE_GEMINI_API_KEY in .env';
-    if (err?.message?.includes('timed out')) return 'AI took too long. Please try again.';
-    return `AI error: ${err?.message ?? 'Unknown error'}`;
+    if (err?.message?.includes('429')) return 'AI is busy. Basic questions (spend, income, balance) still work — try those!';
+    if (err?.message?.includes('timed out')) return 'AI took too long. Basic financial questions still work without AI!';
+    return 'I had trouble processing that. Try asking about spending, income, or balance.';
   }
 };

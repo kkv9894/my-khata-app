@@ -39,8 +39,8 @@ function useToast() {
 }
 
 // ─── Profile Edit Modal ───────────────────────────────────────────────────────
-function ProfileModal({ user, onClose, onSaved }: {
-  user: any; onClose: () => void; onSaved: () => void
+function ProfileModal({ user, onClose, onSaved, accountType }: {
+  user: any; onClose: () => void; onSaved: () => void; accountType: 'personal' | 'business'
 }) {
   const [name,   setName]   = useState<string>(user?.user_metadata?.full_name ?? '')
   const [shop,   setShop]   = useState<string>(user?.user_metadata?.shop_name ?? '')
@@ -84,16 +84,19 @@ function ProfileModal({ user, onClose, onSaved }: {
           <div>
             <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Your Name</p>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter your name"
-              className="w-full rounded-2xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-black" />
+              className="w-full rounded-2xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan" />
           </div>
-          <div>
-            <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Shop / Business Name</p>
-            <input value={shop} onChange={e => setShop(e.target.value)} placeholder="Enter shop name"
-              className="w-full rounded-2xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-black" />
-          </div>
-          {err && <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-500">{err}</p>}
+          {/* Shop Name — Business only */}
+          {accountType === 'business' && (
+            <div>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Shop / Business Name</p>
+              <input value={shop} onChange={e => setShop(e.target.value)} placeholder="Enter shop name"
+                className="w-full rounded-2xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan" />
+            </div>
+          )}
+          {err && <p className="rounded-xl bg-red-900/30 px-3 py-2 text-xs font-bold text-red-400">{err}</p>}
           <button onPointerDown={() => void save()} disabled={saving}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-black py-4 text-sm font-black text-white active:scale-95 transition-transform disabled:opacity-60">
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan py-4 text-sm font-black text-navy-950 active:scale-95 transition-transform disabled:opacity-60">
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
@@ -325,7 +328,7 @@ export default function Settings({ language, setLanguage }: Props) {
       )}
 
       {/* Modals */}
-      {modal === 'profile' && <ProfileModal user={user} onClose={() => setModal(null)} onSaved={() => showToast('✅ Profile saved!')} />}
+      {modal === 'profile' && <ProfileModal user={user} accountType={accountType} onClose={() => setModal(null)} onSaved={() => showToast('✅ Profile saved!')} />}
       {modal === 'version' && <AppVersionModal onClose={() => setModal(null)} brandName={brandName} />}
       {modal === 'help'    && <HelpModal onClose={() => setModal(null)} />}
       {modal === 'ai'      && <AiCopyrightModal onClose={() => setModal(null)} />}
@@ -356,11 +359,17 @@ export default function Settings({ language, setLanguage }: Props) {
           <ChevronRight size={16} className="text-white/30 shrink-0" />
         </div>
         <div className="mt-3 border-t border-white/10 pt-3 flex items-center justify-between">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-white/30">Shop</p>
-            <p className="text-sm font-black text-white/80">{shopName}</p>
-          </div>
-          <p className="text-[10px] text-white/30">Tap to edit →</p>
+          {accountType === 'business' ? (
+            <>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-white/30">Shop</p>
+                <p className="text-sm font-black text-white/80">{shopName}</p>
+              </div>
+              <p className="text-[10px] text-white/30">Tap to edit →</p>
+            </>
+          ) : (
+            <p className="text-[10px] text-white/30 w-full text-right">Tap to edit profile →</p>
+          )}
         </div>
       </button>
 
@@ -388,48 +397,71 @@ export default function Settings({ language, setLanguage }: Props) {
           </div>
         )}
         <Div />
-        <button onPointerDown={() => { setTypeOpen(v => !v); setLangOpen(false) }}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
-          <Ico bg="bg-purple-50"><Building2 size={16} className="text-purple-500" /></Ico>
-          <span className="flex-1 text-left text-sm font-bold text-white">Account Type</span>
-          <span className="text-xs font-bold text-slate-400 mr-1">{accountType === 'business' ? 'Business' : 'Personal'}</span>
-          <ChevronRight size={14} className="text-slate-500" />
-        </button>
-        {typeOpen && (
-          <div className="border-t border-gray-50 bg-navy-900 px-4 py-2">
-            <p className="mb-1 px-3 text-[9px] font-black uppercase tracking-widest text-orange-400">⚠ Changing this reloads the app</p>
-            {(['business', 'personal'] as const).map(type => (
-              <button key={type} onPointerDown={() => void handleAccountType(type)}
-                className="flex w-full items-center justify-between rounded-xl px-3 py-3 active:bg-navy-800">
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">{type === 'business' ? '🏪' : '👤'}</span>
-                  <div className="text-left">
-                    <p className="text-sm font-black text-white capitalize">{type}</p>
-                    <p className="text-[10px] text-slate-400">{type === 'business' ? 'Inventory + Staff + Insights' : 'Personal expense tracking'}</p>
-                  </div>
-                </div>
-                {accountType === type && <Check size={14} className="text-black" />}
-              </button>
-            ))}
+        {/* ── Account Type — locked for Business, upgradeable for Personal ── */}
+        {accountType === 'business' ? (
+          /* Business users: read-only, cannot downgrade */
+          <div className="flex w-full items-center gap-4 px-4 py-4 opacity-80">
+            <Ico bg="bg-purple-50"><Building2 size={16} className="text-purple-500" /></Ico>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-white">Account Type</p>
+              <p className="text-[10px] text-slate-400">Business accounts cannot be downgraded</p>
+            </div>
+            <span className="rounded-full bg-purple-900/40 border border-purple-600/40 px-2.5 py-1 text-[10px] font-black text-purple-300">
+              🏪 Business
+            </span>
           </div>
+        ) : (
+          /* Personal users: can upgrade to Business */
+          <>
+            <button onPointerDown={() => { setTypeOpen(v => !v); setLangOpen(false) }}
+              className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
+              <Ico bg="bg-purple-50"><Building2 size={16} className="text-purple-500" /></Ico>
+              <span className="flex-1 text-left text-sm font-bold text-white">Account Type</span>
+              <span className="text-xs font-bold text-slate-400 mr-1">Personal</span>
+              {typeOpen ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
+            </button>
+            {typeOpen && (
+              <div className="border-t border-navy-700 bg-navy-900 px-4 py-2">
+                <p className="mb-1 px-3 text-[9px] font-black uppercase tracking-widest text-orange-400">
+                  ⚠ Upgrading to Business reloads the app
+                </p>
+                <button onPointerDown={() => void handleAccountType('business')}
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-3 active:bg-navy-800">
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">🏪</span>
+                    <div className="text-left">
+                      <p className="text-sm font-black text-white">Upgrade to Business</p>
+                      <p className="text-[10px] text-slate-400">Unlock Inventory, Staff & Insights</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={14} className="text-slate-500" />
+                </button>
+              </div>
+            )}
+          </>
         )}
       </Section>
 
       {/* ── Notifications ──────────────────────────── */}
       <Section label="Notifications">
-        <div className="flex items-center gap-4 px-4 py-4">
-          <Ico bg={notifOn ? 'bg-orange-50' : 'bg-navy-700'}>
-            {notifOn ? <Bell size={16} className="text-orange-500" /> : <BellOff size={16} className="text-slate-400" />}
-          </Ico>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-white">Push Notifications</p>
-            <p className="text-[10px] text-slate-400">{notifOn ? 'Low stock & daily summary on' : 'All notifications off'}</p>
+        <div className="flex w-full items-center justify-between gap-3 px-4 py-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <Ico bg={notifOn ? 'bg-orange-50' : 'bg-navy-700'}>
+              {notifOn ? <Bell size={16} className="text-orange-500" /> : <BellOff size={16} className="text-slate-400" />}
+            </Ico>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white">Push Notifications</p>
+              <p className="text-[10px] text-slate-400 truncate">
+                {notifOn ? 'Low stock & daily summary on' : 'All notifications off'}
+              </p>
+            </div>
           </div>
+          {/* Toggle — shrink-0 prevents it from being squeezed */}
           <button
             onPointerDown={() => { setNotifOn(v => !v); showToast(notifOn ? '🔕 Notifications off' : '🔔 Notifications on') }}
-            className={`relative h-7 w-12 rounded-full transition-colors ${notifOn ? 'bg-black' : 'bg-gray-200'}`}
+            className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${notifOn ? 'bg-cyan' : 'bg-navy-600'}`}
           >
-            <span className={`absolute top-1 h-5 w-5 rounded-full bg-navy-800 shadow transition-transform ${notifOn ? 'translate-x-5' : 'translate-x-1'}`} />
+            <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${notifOn ? 'translate-x-5' : 'translate-x-1'}`} />
           </button>
         </div>
       </Section>
@@ -441,7 +473,9 @@ export default function Settings({ language, setLanguage }: Props) {
           <Ico bg="bg-green-50">
             {exporting ? <Loader2 size={16} className="animate-spin text-green-500" /> : <Download size={16} className="text-green-500" />}
           </Ico>
-          <span className="flex-1 text-left text-sm font-bold text-white">{exporting ? 'Exporting...' : 'Export Ledger to CSV'}</span>
+          <span className="flex-1 text-left text-sm font-bold text-white">
+            {exporting ? 'Exporting…' : 'Download Ledger as CSV'}
+          </span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
       </Section>
@@ -466,7 +500,7 @@ export default function Settings({ language, setLanguage }: Props) {
         <button onPointerDown={() => setModal('ai')}
           className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
           <Ico bg="bg-indigo-50"><Cpu size={16} className="text-indigo-500" /></Ico>
-          <span className="flex-1 text-left text-sm font-bold text-white">AI & Copyright</span>
+          <span className="flex-1 text-left text-sm font-bold text-white">AI & Attributions</span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
         <Div />
@@ -488,18 +522,18 @@ export default function Settings({ language, setLanguage }: Props) {
         </button>
       </Section>
 
-      {/* ── Danger Zone ────────────────────────────── */}
-      <Section label="Danger Zone">
+      {/* ── Sign Out ───────────────────────────────── */}
+      <Section label="Session">
         <button
           onPointerDown={() => { if (!signingOut) { setSigningOut(true); void signOut() } }}
           disabled={signingOut}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-red-50 transition-colors disabled:opacity-50"
+          className="flex w-full items-center gap-4 px-4 py-4 active:bg-red-950 transition-colors disabled:opacity-50"
         >
-          <Ico bg="bg-red-50">
+          <Ico bg="bg-red-950">
             {signingOut ? <Loader2 size={16} className="animate-spin text-red-400" /> : <LogOut size={16} className="text-red-500" />}
           </Ico>
-          <span className="flex-1 text-left text-sm font-black text-red-500">
-            {signingOut ? 'Signing out...' : 'Sign Out'}
+          <span className="flex-1 text-left text-sm font-black text-red-400">
+            {signingOut ? 'Signing out…' : 'Sign Out'}
           </span>
         </button>
       </Section>
@@ -507,7 +541,7 @@ export default function Settings({ language, setLanguage }: Props) {
       {/* ── Footer ─────────────────────────────────── */}
       <div className="mt-8 px-4 pb-4 text-center">
         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-          Version 1.0.0 · © 2026 {brandName}
+          v1.0.0 · © 2026 {brandName}
         </p>
         <p className="mt-1 text-[9px] text-navy-600">All rights reserved · Powered by Ziva AI</p>
       </div>
