@@ -1,13 +1,6 @@
 // src/hooks/useWhisperSTT.ts
 // GEMINI MULTIMODAL AUDIO PIPELINE
-// Replaces @xenova/transformers entirely.
-// Records audio via MediaRecorder -> FileReader Base64 -> /api/gemini -> Gemini 1.5 Flash
-//
-// FIXES:
-//   FIX 1: Blob size check before sending (avoids empty audio errors)
-//   FIX 2: FileReader strips Data URL prefix correctly
-//   FIX 3: Dynamic mimeType detected and sent to backend
-//   FIX 4: Full console.error logging so real errors are visible in DevTools
+// DEBUG BUILD: catch blocks use alert() to show exact API errors on screen
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 
@@ -70,7 +63,6 @@ export function useWhisperSTT({
   const lastRequestRef = useRef(0)
   const processedRef   = useRef(false)
 
-  // Web Speech live display only
   const startLiveDisplay = useCallback((langCode: string) => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) return
@@ -104,7 +96,7 @@ export function useWhisperSTT({
       }
       r.start()
       recognitionRef.current = r
-    } catch { /* Web Speech not available — Gemini STT still works */ }
+    } catch { /* no Web Speech — fine */ }
   }, [])
 
   const stopLiveDisplay = useCallback(() => {
@@ -114,20 +106,18 @@ export function useWhisperSTT({
     recognitionRef.current = null
   }, [])
 
-  // FIX 2: FileReader Base64 conversion — strips "data:audio/webm;base64," prefix
+  // FileReader Base64 — strips "data:audio/webm;base64," prefix
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.onloadend = () => {
         const result = reader.result as string
         if (!result) { reject(new Error('FileReader returned empty result')); return }
-        // result = "data:audio/webm;base64,XXXXXXX"
-        // Split on comma and take everything after it
         const base64Data = result.split(',')[1]
-        if (!base64Data) { reject(new Error('Could not extract Base64 data')); return }
+        if (!base64Data) { reject(new Error('Could not extract Base64 — split failed')); return }
         resolve(base64Data)
       }
-      reader.onerror = () => reject(new Error('FileReader error'))
+      reader.onerror = () => reject(new Error('FileReader.onerror fired'))
       reader.readAsDataURL(blob)
     })
   }
@@ -148,35 +138,38 @@ export function useWhisperSTT({
     setStatus('transcribing')
     setProcessingStep('Processing audio…')
 
-    // FIX 3: Use dynamically detected mimeType
     const effectiveMime = mimeType || 'audio/webm'
     const rawBlob = new Blob(chunks, { type: effectiveMime })
 
-    console.log(`[GeminiSTT] Blob: ${rawBlob.size} bytes | mime: ${effectiveMime}`)
+    // ── DEBUG: Blob diagnostics ───────────────────────────────────────────────
+    const blobInfo = `Blob: ${rawBlob.size} bytes | mime: ${effectiveMime} | chunks: ${chunks.length}`
+    console.log('[GeminiSTT]', blobInfo)
 
-    // FIX 1: Explicit size check before sending
     if (rawBlob.size === 0) {
-      console.error('[GeminiSTT] Empty blob — nothing was recorded')
-      cbRef.current.onError?.('No audio captured. Please try again.')
+      const msg = `DEBUG: Empty blob. ${blobInfo}`
+      console.error('[GeminiSTT]', msg)
+      alert(msg)
       setStatus('idle'); setLiveText(''); setProcessingStep('')
       return
     }
 
     if (rawBlob.size < 500) {
-      console.error(`[GeminiSTT] Blob too small: ${rawBlob.size} bytes`)
-      cbRef.current.onError?.('Too short. Hold the button and speak clearly.')
+      const msg = `DEBUG: Blob too small (${rawBlob.size} bytes). Hold button longer and speak clearly.`
+      console.error('[GeminiSTT]', msg)
+      alert(msg)
       setStatus('idle'); setLiveText(''); setProcessingStep('')
       return
     }
 
-    // FIX 2: FileReader conversion
     let base64Audio: string
     try {
       base64Audio = await blobToBase64(rawBlob)
-      console.log(`[GeminiSTT] Base64 length: ${base64Audio.length} chars`)
-    } catch (err) {
-      console.error('[GeminiSTT] Base64 conversion failed:', err)
-      cbRef.current.onError?.('Could not process audio. Try again.')
+      console.log(`[GeminiSTT] Base64 ready. Length: ${base64Audio.length} chars`)
+    } catch (err: any) {
+      const msg = `DEBUG: Base64 conversion failed. ${err?.message}`
+      console.error('[GeminiSTT]', msg)
+      alert(msg)
+      cbRef.current.onError?.(msg)
       setStatus('idle'); setLiveText(''); setProcessingStep('')
       return
     }
@@ -195,7 +188,7 @@ export function useWhisperSTT({
             action:  'transcribe-audio',
             payload: {
               base64Audio,
-              mimeType: effectiveMime,  // FIX 3: dynamic mime to backend
+              mimeType: effectiveMime,
               language: langRef.current,
             },
           }),
@@ -204,11 +197,15 @@ export function useWhisperSTT({
         clearTimeout(timer)
       }
 
+      // ── DEBUG: Show exact HTTP status and body on failure ─────────────────
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}))
-        const errMsg  = errData?.error ?? `Server error ${response.status}`
-        console.error('[GeminiSTT] Backend returned error:', errMsg)
-        throw new Error(errMsg)
+        const rawBody = await response.text().catch(() => '(could not read body)')
+        const msg = `DEBUG: Backend HTTP ${response.status}\nURL: /api/gemini\nBody: ${rawBody}`
+        console.error('[GeminiSTT]', msg)
+        alert(msg)  // Forces real error onto screen
+        cbRef.current.onError?.(msg)
+        setStatus('idle'); setLiveText(''); setProcessingStep('')
+        return
       }
 
       const data = await response.json()
@@ -217,8 +214,10 @@ export function useWhisperSTT({
       console.log(`[GeminiSTT] Transcript: "${text}"`)
 
       if (!text) {
-        console.warn('[GeminiSTT] Gemini returned empty transcript')
-        cbRef.current.onError?.('Could not hear clearly. Please speak louder and try again.')
+        // ── DEBUG: Show what Gemini actually returned ─────────────────────
+        const msg = `DEBUG: Gemini returned empty transcript.\nFull response: ${JSON.stringify(data)}`
+        console.warn('[GeminiSTT]', msg)
+        alert(msg)
         cbRef.current.onTranscript('', 'low')
         setStatus('idle'); setLiveText(''); setProcessingStep('')
         return
@@ -235,14 +234,14 @@ export function useWhisperSTT({
       cbRef.current.onTranscript(text, conf)
 
     } catch (err: any) {
-      // FIX 4: Full error logging visible in Android Chrome DevTools
-      console.error('[GeminiSTT] Gemini API Error:', err)
+      // ── DEBUG: Show exact JS error on screen ─────────────────────────────
       const isTimeout = err?.name === 'AbortError' || err?.message?.includes('timed out')
-      cbRef.current.onError?.(
-        isTimeout
-          ? 'Voice processing timed out. Try a shorter phrase.'
-          : `Voice error: ${err?.message ?? 'Unknown. Please try again.'}`
-      )
+      const msg = isTimeout
+        ? `DEBUG: Request timed out after 30s`
+        : `DEBUG: Fetch/Network error\nName: ${err?.name}\nMessage: ${err?.message}\nStack: ${err?.stack?.split('\n')[0]}`
+      console.error('[GeminiSTT] Gemini API Error:', err)
+      alert(msg)
+      cbRef.current.onError?.(msg)
       cbRef.current.onTranscript('', 'low')
       setStatus('idle'); setLiveText(''); setProcessingStep('')
     }
@@ -276,9 +275,6 @@ export function useWhisperSTT({
     }).then(stream => {
       streamRef.current = stream
 
-      // FIX 3: Detect correct mimeType for this device
-      // Android Chrome = audio/webm;codecs=opus
-      // iOS Safari     = audio/mp4
       const mimeType = [
         'audio/webm;codecs=opus',
         'audio/webm',
@@ -286,7 +282,7 @@ export function useWhisperSTT({
         'audio/mp4',
       ].find(m => MediaRecorder.isTypeSupported(m)) ?? ''
 
-      console.log(`[GeminiSTT] Recorder mimeType: "${mimeType || 'browser default'}"`)
+      console.log(`[GeminiSTT] Using mimeType: "${mimeType || 'browser default'}"`)
 
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
 
@@ -309,11 +305,11 @@ export function useWhisperSTT({
       console.error('[GeminiSTT] getUserMedia failed:', err)
       isHoldingRef.current = false
       setStatus('idle')
-      cbRef.current.onError?.(
-        err.name === 'NotAllowedError'
-          ? 'Microphone blocked. Go to browser Settings → Site Settings → Microphone → Allow.'
-          : 'Could not access microphone. Check permissions and try again.'
-      )
+      const msg = err.name === 'NotAllowedError'
+        ? 'Microphone blocked. Go to browser Settings → Site Settings → Microphone → Allow.'
+        : `Microphone error: ${err?.message}`
+      alert(`DEBUG: ${msg}`)
+      cbRef.current.onError?.(msg)
     })
   }, [cooldownMs, startLiveDisplay, transcribeWithGemini])
 
