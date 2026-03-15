@@ -1,12 +1,14 @@
 // api/gemini.ts — ZivaKhata Vercel Serverless Function
 //
 // Handles 3 actions:
-//   'post'              — text-only Gemini call (analyzeTransaction, detectVoiceIntent, askFinancialAI)
-//   'scan-receipt'      — Gemini Vision for receipt images
-//   'transcribe-audio'  — NEW: Gemini 1.5 Flash multimodal audio → transcript
+//   'post'             — text-only Gemini call
+//   'scan-receipt'     — Gemini Vision for receipt images
+//   'transcribe-audio' — Gemini 1.5 Flash multimodal audio -> transcript
 //
-// SAFETY NET: All Gemini calls use exponential backoff (2s → 4s → 8s) on 429.
-// Frontend user sees "Processing…" spinner — retries are invisible to them.
+// FIXES:
+//   FIX A: Dynamic mimeType from frontend used in inlineData (not hardcoded)
+//   FIX B: Exact Google error message returned to frontend (no swallowing)
+//   FIX C: Exponential backoff 2s->4s->8s on 429 rate limit errors
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
@@ -14,9 +16,8 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? ''
 const MODEL          = 'gemini-1.5-flash'
 const BASE_URL       = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`
 
-// ── Exponential backoff retry wrapper ────────────────────────────────────────
-// Retries on 429 (rate limit) with 2s → 4s → 8s delays.
-// Any other error is thrown immediately.
+// FIX C: Exponential backoff retry wrapper
+// Retries only on 429. All other errors thrown immediately.
 async function callGeminiWithRetry(
   body: object,
   maxRetries = 3,
@@ -25,9 +26,8 @@ async function callGeminiWithRetry(
   let lastError: Error = new Error('Unknown error')
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    // Wait before retry (not before first attempt)
     if (attempt > 0) {
-      const waitMs = Math.pow(2, attempt) * 1000   // 2s, 4s, 8s
+      const waitMs = Math.pow(2, attempt) * 1000  // 2s, 4s, 8s
       console.log(`[Gemini] 429 retry ${attempt}/${maxRetries - 1} — waiting ${waitMs}ms`)
       await new Promise(resolve => setTimeout(resolve, waitMs))
     }
@@ -45,16 +45,16 @@ async function callGeminiWithRetry(
 
       clearTimeout(timer)
 
-      // 429 → retry
       if (response.status === 429) {
         lastError = new Error('429 Rate limit exceeded')
-        continue
+        continue  // retry
       }
 
-      // Any other non-OK → throw immediately (don't retry 400, 403, 500 etc.)
       if (!response.ok) {
+        // FIX B: Read exact error from Google and throw it
         const errText = await response.text().catch(() => response.statusText)
-        throw new Error(`Gemini API error ${response.status}: ${errText}`)
+        console.error(`[Gemini] API error ${response.status}:`, errText)
+        throw new Error(`Gemini error ${response.status}: ${errText}`)
       }
 
       return await response.json()
@@ -62,12 +62,11 @@ async function callGeminiWithRetry(
     } catch (err: any) {
       clearTimeout(timer)
 
-      // AbortError = timeout — don't retry
       if (err?.name === 'AbortError') {
         throw new Error('Gemini request timed out')
       }
 
-      // Re-throw non-429 errors immediately
+      // Don't retry non-429 errors
       if (!err?.message?.includes('429')) {
         throw err
       }
@@ -76,16 +75,13 @@ async function callGeminiWithRetry(
     }
   }
 
-  // All retries exhausted
   throw lastError
 }
 
-// ── Extract text from Gemini response ────────────────────────────────────────
 function extractText(data: any): string {
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 }
 
-// ── Main handler ──────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -95,19 +91,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(204).end()
   }
 
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-  if (!GEMINI_API_KEY)       return res.status(500).json({ error: 'GEMINI_API_KEY not configured' })
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  if (!GEMINI_API_KEY) {
+    console.error('[api/gemini] GEMINI_API_KEY is not set in environment variables')
+    return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' })
+  }
 
   const { action, payload } = req.body ?? {}
+  console.log(`[api/gemini] action="${action}"`)
 
   try {
 
-    // ── ACTION: transcribe-audio ──────────────────────────────────────────────
-    // NEW: Receives Base64 audio from frontend, sends to Gemini 1.5 Flash multimodal
+    // ── ACTION: transcribe-audio ────────────────────────────────────────────
     if (action === 'transcribe-audio') {
-      const { base64Audio, mimeType = 'audio/webm', language = 'en' } = payload ?? {}
+      const {
+        base64Audio,
+        mimeType = 'audio/webm',  // FIX A: use mimeType from frontend
+        language = 'en',
+      } = payload ?? {}
 
-      if (!base64Audio) return res.status(400).json({ error: 'base64Audio is required' })
+      if (!base64Audio) {
+        return res.status(400).json({ error: 'payload.base64Audio is required' })
+      }
+
+      console.log(`[transcribe-audio] lang=${language} | mime=${mimeType} | base64Length=${base64Audio.length}`)
 
       const LANG_NAMES: Record<string, string> = {
         en: 'English (Indian accent)',
@@ -119,37 +129,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const langName = LANG_NAMES[language] ?? 'English'
 
-      // System instruction for audio transcription
-      // Reuses the same Indian code-switching awareness as analyzeTransaction
-      const transcribePrompt = `You are Ziva, a voice transcription engine for ZivaKhata — an Indian shopkeeper ledger app.
+      const transcribePrompt = `You are Ziva, a voice transcription engine for ZivaKhata, an Indian shopkeeper ledger app.
 
-The user has recorded a voice note in ${langName} or a mix of ${langName} and English (code-switching is very common in India).
+The user recorded a voice note in ${langName} or a mix of ${langName} and English.
+Code-switching is extremely common in India — users freely mix English words with regional grammar.
 
-YOUR TASK: Transcribe the audio EXACTLY as spoken. 
-- Keep the original words (do not translate)
-- Keep mixed language as-is (e.g. "milk ku 50 rupees" should stay as "milk ku 50 rupees")
-- If you hear a number, write it as a digit (e.g. "fifty" → 50)
+YOUR TASK: Transcribe the audio EXACTLY as spoken.
+- Keep original words (do not translate)
+- Keep mixed language as-is (e.g. "milk ku 50 rupees" stays as "milk ku 50 rupees")
+- Write numbers as digits (e.g. "fifty" -> 50, "five hundred" -> 500)
 - Remove filler sounds (um, uh, ah) but keep all meaningful words
-- If audio is silent or inaudible, return empty string only
+- If audio is silent or completely inaudible, return empty string only
 
-Return ONLY the transcribed text. No explanations, no punctuation correction, no JSON.`
+Return ONLY the transcribed text. No explanations, no punctuation changes, no JSON, no markdown.`
 
       const requestBody = {
         contents: [{
           parts: [
-            // Audio part — Gemini 1.5 Flash multimodal
             {
+              // FIX A: Use dynamic mimeType sent from frontend
+              // Android Chrome -> audio/webm;codecs=opus
+              // iOS Safari     -> audio/mp4
               inlineData: {
                 data:     base64Audio,
                 mimeType: mimeType,
               },
             },
-            // Text instruction part
             { text: transcribePrompt },
           ],
         }],
         generationConfig: {
-          temperature: 0.0,   // deterministic — we want exact transcription
+          temperature: 0.0,
           topP:        0.1,
           topK:        1,
         },
@@ -158,14 +168,16 @@ Return ONLY the transcribed text. No explanations, no punctuation correction, no
       const data = await callGeminiWithRetry(requestBody, 3, 25000)
       const text = extractText(data).trim()
 
-      console.log(`✅ [transcribe-audio] lang=${language} | result="${text}"`)
+      console.log(`[transcribe-audio] result="${text}"`)
       return res.status(200).json({ text })
     }
 
-    // ── ACTION: post (text-only — analyzeTransaction, detectVoiceIntent, etc.) ──
+    // ── ACTION: post (text-only) ────────────────────────────────────────────
     if (action === 'post') {
       const { body: geminiBody, timeoutMs = 15000 } = payload ?? {}
-      if (!geminiBody) return res.status(400).json({ error: 'payload.body is required' })
+      if (!geminiBody) {
+        return res.status(400).json({ error: 'payload.body is required' })
+      }
 
       const data = await callGeminiWithRetry(geminiBody, 3, timeoutMs)
       const text = extractText(data)
@@ -173,17 +185,19 @@ Return ONLY the transcribed text. No explanations, no punctuation correction, no
       return res.status(200).json({ text })
     }
 
-    // ── ACTION: scan-receipt (Gemini Vision) ──────────────────────────────────
+    // ── ACTION: scan-receipt ────────────────────────────────────────────────
     if (action === 'scan-receipt') {
       const { base64Image, mimeType = 'image/jpeg' } = payload ?? {}
-      if (!base64Image) return res.status(400).json({ error: 'base64Image is required' })
+      if (!base64Image) {
+        return res.status(400).json({ error: 'payload.base64Image is required' })
+      }
 
       const receiptPrompt = `You are a receipt scanning AI for ZivaKhata, an Indian shopkeeper app.
-Analyze this receipt image and extract:
+Analyze this receipt and extract:
 - Total amount paid (number only, no currency symbol)
 - Brief description (what was purchased, max 5 words)
 - Category: Food | Groceries | Fuel | Transport | Healthcare | Utilities | Shopping | General
-- Date (YYYY-MM-DD format, or today if not visible)
+- Date in YYYY-MM-DD format, or today's date if not visible
 
 OUTPUT: JSON only, no markdown, no backticks.
 {"amount": number, "description": "string", "category": "string", "date": "YYYY-MM-DD"}`
@@ -201,22 +215,25 @@ OUTPUT: JSON only, no markdown, no backticks.
       const data = await callGeminiWithRetry(requestBody, 3, 25000)
       const raw  = extractText(data)
 
-      console.log(`✅ [scan-receipt] raw="${raw}"`)
+      console.log(`[scan-receipt] raw="${raw}"`)
       return res.status(200).json({ raw })
     }
 
-    return res.status(400).json({ error: `Unknown action: ${action}` })
+    return res.status(400).json({ error: `Unknown action: "${action}"` })
 
   } catch (err: any) {
-    console.error(`[api/gemini] action=${action} error:`, err?.message)
+    // FIX B: Return exact error message — never swallow it
+    const message = err?.message ?? 'Internal server error'
+    console.error(`[api/gemini] action="${action}" FAILED:`, message)
 
-    if (err?.message?.includes('429')) {
-      return res.status(429).json({ error: 'AI rate limit reached. Please try again in a moment.' })
+    if (message.includes('429')) {
+      return res.status(429).json({ error: 'AI rate limit reached. Please wait a moment and try again.' })
     }
-    if (err?.message?.includes('timed out')) {
+    if (message.includes('timed out')) {
       return res.status(504).json({ error: 'AI request timed out. Please try again.' })
     }
 
-    return res.status(500).json({ error: err?.message ?? 'Internal server error' })
+    // FIX B: Send exact Google error back so frontend can log it
+    return res.status(500).json({ error: message })
   }
 }
