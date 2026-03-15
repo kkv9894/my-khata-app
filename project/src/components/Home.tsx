@@ -584,7 +584,7 @@ const extractAmount = (text: string): number => {
   // "200 gram rice 150" → 200 is qty, 150 is price
   // "500ml oil 95" → 500 is qty, 95 is price
   // We build a "weight positions" set to exclude those indices from amount parsing
-  const weightUnitRx = /(\d+(?:\.\d+)?)\s*(grams?|g\b|kgs?|kilograms?|kg\b|ml\b|milli?litres?|litres?|ltr?s?\b|l\b|pieces?|pcs?\b|packets?|pkt\b|nos?\b|units?\b|dozen|dz\b)/gi
+  const weightUnitRx = /(\d+(?:\.\d+)?)\s*(grams?|g\b|kgs?|kilograms?|kg\b|mls?\b|milli?litres?|litres?|ltr?s?\b|pieces?|pcs?\b|packets?|pkt\b|nos?\b|units?\b|dozen|dz\b)/gi
   const weightPositions = new Set<number>()
   for (const m of t.matchAll(weightUnitRx)) {
     if (m.index != null) weightPositions.add(m.index)
@@ -612,7 +612,7 @@ const extractAmount = (text: string): number => {
   }
 
   // PRIORITY 2: shorthand
-  const sh = lo.match(/(\d+\.?\d*)\s*(k|l|lac|lakh|cr|crore)/)
+  const sh = lo.match(/(\d+\.?\d*)\s*(k(?!g)|l(?!tr|itre|t\b)|lac|lakh|cr|crore)/)
   if (sh) {
     const n = parseFloat(sh[1]), u = sh[2]
     if (u === 'k') return n * 1000
