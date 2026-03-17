@@ -7,9 +7,6 @@ import { LogOut, Loader2 } from 'lucide-react';
 import { getBrandName, speakWelcome } from './lib/brand';
 
 // ✅ BLINK FIX: Unregister ALL service workers immediately when this module loads.
-// The old SW had skipWaiting() + clients.claim() which forced page reloads on every
-// hot-reload cycle, causing the login page blinking loop.
-// This runs once, kills any cached SW, and the new inert sw.js takes over cleanly.
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(registrations => {
     registrations.forEach(reg => {
@@ -26,6 +23,48 @@ interface AuthenticatedAppProps {
   setLanguage: (l: Lang) => void;
 }
 
+// ── Inline SVG Logo — no external file, always renders correctly ──────────────
+function ZivaLogo({ size = 36 }: { size?: number }) {
+  return (
+    <div
+      style={{
+        width:        size,
+        height:       size,
+        background:   '#1C1C1C',
+        border:       '1px solid #333333',
+        borderRadius: size * 0.28,
+        display:      'flex',
+        alignItems:   'center',
+        justifyContent: 'center',
+        flexShrink:   0,
+      }}
+    >
+      <svg viewBox="0 0 120 120" width={size * 0.65} height={size * 0.65} xmlns="http://www.w3.org/2000/svg">
+        {/* Flame */}
+        <path
+          d="M60 10 C60 10 38 38 44 62 C48 76 60 84 60 84 C60 84 74 74 74 54 C74 38 60 22 60 10Z"
+          fill="white" opacity="0.9"
+        />
+        <path
+          d="M60 36 C60 36 52 52 55 64 C57 70 60 74 60 74 C60 74 66 68 66 56 C66 48 60 42 60 36Z"
+          fill="#111111"
+        />
+        {/* Open book */}
+        <path
+          d="M18 72 Q40 62 60 78 Q80 62 102 72 L102 106 Q80 96 60 112 Q40 96 18 106Z"
+          fill="none" stroke="white" strokeWidth="6"
+          strokeLinejoin="round" strokeLinecap="round" opacity="0.9"
+        />
+        {/* Book lines */}
+        <path d="M28 82 Q44 74 60 84" fill="none" stroke="white"
+              strokeWidth="3" strokeLinecap="round" opacity="0.45"/>
+        <path d="M92 82 Q76 74 60 84" fill="none" stroke="white"
+              strokeWidth="3" strokeLinecap="round" opacity="0.45"/>
+      </svg>
+    </div>
+  )
+}
+
 function AuthenticatedApp({ language, setLanguage }: AuthenticatedAppProps) {
   const { user, signOut } = useAuth();
   const { shopName, isStaff } = useRole();
@@ -34,33 +73,43 @@ function AuthenticatedApp({ language, setLanguage }: AuthenticatedAppProps) {
   return (
     <div className="h-screen flex flex-col bg-navy-900 font-sans overflow-hidden">
 
-      {/* ── Fixed Header — dark glass ─────────────────────────────────────── */}
-      <div className="fixed top-0 left-0 right-0 z-[100] border-b border-navy-600 bg-navy-900/90 backdrop-blur-xl px-4 py-3">
+      {/* ── Fixed Header ─────────────────────────────────────────────────── */}
+      <div
+        className="fixed top-0 left-0 right-0 z-[100] px-4 py-3 backdrop-blur-xl"
+        style={{
+          background:   'rgba(17,17,17,0.95)',
+          borderBottom: '1px solid #333333',
+        }}
+      >
         <div className="flex justify-between items-center">
 
           {/* Left: logo + brand + shop info */}
           <div className="flex items-center gap-3 min-w-0">
-            {/* Logo — served from /public/logo.png */}
-            <img
-              src="/logo.png"
-              alt="ZivaKhata"
-              className="h-9 w-9 rounded-xl object-cover shrink-0 shadow-cyan-glow"
-            />
+            <ZivaLogo size={36} />
             <div className="min-w-0">
-              {/* Brand name row */}
-              <span className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan block leading-none mb-0.5">
+              <span
+                className="text-[10px] font-black uppercase tracking-[0.18em] block leading-none mb-0.5"
+                style={{ color: 'rgba(255,255,255,0.40)' }}
+              >
                 {brandName}
               </span>
-              {/* Shop name */}
               <span className="font-bold text-sm tracking-tight text-white block leading-tight truncate max-w-[150px]">
                 {shopName}
               </span>
               <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-[10px] text-slate-400 font-semibold truncate max-w-[120px]">
+                <p className="text-[10px] font-semibold truncate max-w-[120px]"
+                   style={{ color: '#666666' }}>
                   {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
                 </p>
                 {isStaff && (
-                  <span className="text-[8px] font-black uppercase bg-cyan-muted text-cyan px-1.5 py-0.5 rounded-full tracking-widest border border-cyan-border">
+                  <span
+                    className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full tracking-widest"
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      color:      'rgba(255,255,255,0.5)',
+                      border:     '1px solid rgba(255,255,255,0.12)',
+                    }}
+                  >
                     Staff
                   </span>
                 )}
@@ -73,7 +122,11 @@ function AuthenticatedApp({ language, setLanguage }: AuthenticatedAppProps) {
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value as Lang)}
-              className="bg-navy-800 border border-navy-600 rounded-xl px-3 py-2 text-xs font-black text-slate-300 outline-none cursor-pointer focus:border-cyan"
+              className="rounded-xl px-3 py-2 text-xs font-black text-slate-300 outline-none cursor-pointer"
+              style={{
+                background: '#1C1C1C',
+                border:     '1px solid #333333',
+              }}
             >
               <option value="en">English</option>
               <option value="hi">हिंदी</option>
@@ -84,16 +137,18 @@ function AuthenticatedApp({ language, setLanguage }: AuthenticatedAppProps) {
             </select>
             <button
               onClick={() => signOut()}
-              className="p-2 text-slate-400 hover:text-cyan hover:bg-cyan-muted rounded-lg transition-all"
+              className="p-2 rounded-lg transition-all"
+              style={{ color: '#555555' }}
               title="Sign Out"
             >
               <LogOut size={18} />
             </button>
           </div>
+
         </div>
       </div>
 
-      <Home language={language} />
+      <Home language={language} setLanguage={setLanguage} />
     </div>
   );
 }
@@ -111,11 +166,13 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-navy-900 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center"
+           style={{ background: '#111111' }}>
         <div className="flex flex-col items-center gap-4">
-          <img src="/logo.png" alt="ZivaKhata" className="w-16 h-16 rounded-2xl shadow-cyan-glow animate-pulse" />
-          <Loader2 className="animate-spin text-cyan" size={32} />
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+          <ZivaLogo size={64} />
+          <Loader2 className="animate-spin" size={28} style={{ color: '#555555' } as any} />
+          <p className="text-[10px] font-black uppercase tracking-[0.3em]"
+             style={{ color: '#555555' }}>
             Verifying Session
           </p>
         </div>
@@ -125,7 +182,7 @@ function AppContent() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-navy-900">
+      <div className="min-h-screen" style={{ background: '#111111' }}>
         <Auth language={language} />
       </div>
     );
