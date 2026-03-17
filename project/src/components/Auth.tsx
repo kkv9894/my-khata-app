@@ -145,10 +145,11 @@ export default function Auth({ language: _language = 'en' }: { language?: Suppor
 
         {/* Logo — 128×128, centered, with cyan glow */}
         <img
-          src="/logo.png"
-          alt="ZivaKhata"
-          className="w-32 h-32 mx-auto mb-6 rounded-3xl object-cover shadow-cyan-glow"
-        />
+  src="/logo.svg"
+  alt="ZivaKhata"
+  className="w-32 h-32 mx-auto mb-6 rounded-3xl shadow-gold-glow"
+  style={{ background: 'transparent' }}
+/>
 
         {/* Dynamic brand name */}
         <h1 className="text-4xl font-black tracking-tighter text-white">
