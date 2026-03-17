@@ -4,24 +4,38 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── ZivaKhata brand palette ─────────────────────────────────────────
+        // ── ZivaKhata Black & Gold Premium Palette ──────────────────────────
+        // Replaces navy/cyan with deep black + warm gold
         navy: {
-          950: '#060B19',   // deepest bg
-          900: '#0A1128',   // main app bg
-          800: '#0F1A3E',   // card bg
-          700: '#162050',   // elevated card / modal
-          600: '#1E2D6B',   // border / divider
-          500: '#2A3F8F',   // subtle highlight
-          400: '#3D56B5',   // muted text bg
+          950: '#0A0800',   // deepest black with warm undertone
+          900: '#0F0C00',   // main app background
+          800: '#1A1500',   // card background
+          700: '#241D00',   // elevated card / modal
+          600: '#2E2500',   // border / divider
+          500: '#3D3200',   // subtle highlight
+          400: '#5C4C00',   // muted text bg
         },
+        // Gold replaces cyan as primary action colour
         cyan: {
-          DEFAULT: '#00E5FF',  // primary action — neon cyan
-          glow:    '#00E5FF',
-          dim:     '#00B8CC',  // darker variant for hover
-          muted:   '#00E5FF26', // 15% alpha for backgrounds
-          border:  '#00E5FF40', // 25% alpha for borders
+          DEFAULT: '#D4A017',   // warm Indian gold — primary action
+          glow:    '#D4A017',
+          dim:     '#B8860B',   // dark gold for hover
+          muted:   '#D4A01726', // 15% alpha backgrounds
+          border:  '#D4A01740', // 25% alpha borders
         },
-        // ── Legacy — untouched so existing components don't break ───────────
+        gold: {
+          50:  '#FFFBEB',
+          100: '#FEF3C7',
+          200: '#FDE68A',
+          300: '#FCD34D',
+          400: '#FBBF24',
+          500: '#D4A017',   // main gold
+          600: '#B8860B',   // dark gold
+          700: '#92660A',
+          800: '#6B4C08',
+          900: '#4A3406',
+        },
+        // ── Legacy — kept so existing components don't break ─────────────────
         primary: {
           50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 300: '#fdba74',
           400: '#fb923c', 500: '#FF6B35', 600: '#ea580c',
@@ -33,27 +47,41 @@ export default {
           700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a',
         },
       },
-      // ── Drop shadows using cyan glow ─────────────────────────────────────
+
+      // ── Gold glow shadows ─────────────────────────────────────────────────
       boxShadow: {
-        'cyan-glow':  '0 0 20px 4px rgba(0,229,255,0.45)',
-        'cyan-pulse': '0 0 32px 8px rgba(0,229,255,0.55)',
-        'card-dark':  '0 4px 24px 0 rgba(0,0,0,0.45)',
+        'cyan-glow':  '0 0 20px 4px rgba(212,160,23,0.40)',
+        'cyan-pulse': '0 0 32px 8px rgba(212,160,23,0.50)',
+        'gold-glow':  '0 0 20px 4px rgba(212,160,23,0.40)',
+        'gold-soft':  '0 2px 16px 0 rgba(212,160,23,0.20)',
+        'card-dark':  '0 4px 24px 0 rgba(0,0,0,0.60)',
       },
-      // ── Keyframes for mic pulse ring ─────────────────────────────────────
+
+      // ── Fonts ─────────────────────────────────────────────────────────────
+      fontFamily: {
+        display: ['Playfair Display', 'Georgia', 'serif'],
+        body:    ['DM Sans', 'system-ui', 'sans-serif'],
+      },
+
+      // ── Keyframes ─────────────────────────────────────────────────────────
       keyframes: {
-        // Uses ONLY transform + opacity — both GPU-composited, zero repaint
         'ziva-ping': {
-          '0%':   { transform: 'scale(1)',    opacity: '0.7', willChange: 'transform, opacity' },
-          '100%': { transform: 'scale(1.7)', opacity: '0'                                     },
+          '0%':   { transform: 'scale(1)',    opacity: '0.6', willChange: 'transform, opacity' },
+          '100%': { transform: 'scale(1.7)', opacity: '0' },
         },
         'slide-up': {
           from: { transform: 'translateY(100%)', opacity: '0' },
           to:   { transform: 'translateY(0)',    opacity: '1' },
         },
+        'gold-shimmer': {
+          '0%':   { backgroundPosition: '-200% center' },
+          '100%': { backgroundPosition: '200% center' },
+        },
       },
       animation: {
-        'ziva-ping': 'ziva-ping 1.2s ease-out infinite',
-        'slide-up':  'slide-up 0.3s ease-out',
+        'ziva-ping':    'ziva-ping 1.4s ease-out infinite',
+        'slide-up':     'slide-up 0.3s ease-out',
+        'gold-shimmer': 'gold-shimmer 3s linear infinite',
       },
     },
   },

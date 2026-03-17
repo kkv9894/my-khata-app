@@ -2,23 +2,80 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💳</text></svg>" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>₹</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>ZivaKhata - Your Smart AI Ledger</title>
+    <title>ZivaKhata — Smart AI Ledger</title>
+
+    <!-- Premium fonts: Playfair Display (display) + DM Sans (body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;900&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.all.min.js"></script>
+
+    <style>
+      /* ── Global token overrides ── */
+      :root {
+        --gold:        #D4A017;
+        --gold-dim:    #B8860B;
+        --gold-light:  #F5CC50;
+        --black-deep:  #0A0800;
+        --black-card:  #1A1500;
+        --black-border:#2E2500;
+        --text-primary:#F5EFD6;   /* warm off-white — easier on eyes than pure white */
+        --text-muted:  #A89060;   /* muted gold-brown for secondary text */
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: var(--black-deep);
+        color: var(--text-primary);
+        font-family: 'DM Sans', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Subtle gold grain texture on body */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background-image:
+          radial-gradient(ellipse at 20% 20%, rgba(212,160,23,0.04) 0%, transparent 60%),
+          radial-gradient(ellipse at 80% 80%, rgba(212,160,23,0.03) 0%, transparent 60%);
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      #root { position: relative; z-index: 1; }
+
+      /* Gold scrollbar */
+      ::-webkit-scrollbar { width: 3px; }
+      ::-webkit-scrollbar-track { background: var(--black-deep); }
+      ::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 2px; }
+
+      /* Input/textarea placeholder colour */
+      ::placeholder { color: var(--text-muted); opacity: 1; }
+
+      /* Remove blue tap highlight on mobile */
+      * { -webkit-tap-highlight-color: transparent; }
+    </style>
+
     <script>
       window.global = window;
       window.process = { env: { NODE_ENV: 'development' } };
       window.onload = function() {
         if (typeof lamejs !== 'undefined') {
           window.Lame = lamejs;
-          console.log("✅ Audio Engine Locked and Loaded");
+          console.log('✅ ZivaKhata Audio Engine Ready');
         }
       };
     </script>
   </head>
-  <body class="bg-white">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
