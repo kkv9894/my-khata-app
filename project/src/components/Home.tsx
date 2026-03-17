@@ -1417,7 +1417,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
                     : 'bg-navy-800 mic-idle active:scale-95'}
                   ${isBusy || rateLimited ? 'opacity-60' : ''}`}
               >
-                <Mic size={64} color="#00E5FF" />
+                <Mic size={64} color="#FFFFFF" />
               </button>
             </div>
 
