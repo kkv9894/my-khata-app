@@ -584,7 +584,7 @@ const extractAmount = (text: string): number => {
   // "200 gram rice 150" → 200 is qty, 150 is price
   // "500ml oil 95" → 500 is qty, 95 is price
   // We build a "weight positions" set to exclude those indices from amount parsing
-  const weightUnitRx = /(\d+(?:\.\d+)?)\s*(grams?|g\b|kgs?|kilograms?|kg\b|mls?\b|milli?litres?|litres?|ltr?s?\b|pieces?|pcs?\b|packets?|pkt\b|nos?\b|units?\b|dozen|dz\b)/gi
+  const weightUnitRx = /(\d+(?:\.\d+)?)\s*(grams?|g\b|kgs?|kilograms?|kg\b|ml\b|milli?litres?|litres?|ltr?s?\b|l\b|pieces?|pcs?\b|packets?|pkt\b|nos?\b|units?\b|dozen|dz\b)/gi
   const weightPositions = new Set<number>()
   for (const m of t.matchAll(weightUnitRx)) {
     if (m.index != null) weightPositions.add(m.index)
@@ -612,7 +612,7 @@ const extractAmount = (text: string): number => {
   }
 
   // PRIORITY 2: shorthand
-  const sh = lo.match(/(\d+\.?\d*)\s*(k(?!g)|l(?!tr|itre|t\b)|lac|lakh|cr|crore)/)
+  const sh = lo.match(/(\d+\.?\d*)\s*(k|l|lac|lakh|cr|crore)/)
   if (sh) {
     const n = parseFloat(sh[1]), u = sh[2]
     if (u === 'k') return n * 1000
@@ -646,10 +646,7 @@ const removeAmountOnly = (text: string): string => {
   for (const [pat] of INDIAN_NUMBERS) r = r.replace(pat, ' ')
   r = r.replace(/₹\s*[\d,]+(\.\d+)?/g, '')
   r = r.replace(/\d{1,3}(?:,\d{2,3})+/g, '')
-  r = r.replace(/\d+\.?\d*\s*(k(?!g)|l(?!tr|itre)|lac|lakh|cr|crore)/gi, '')
-  // Remove quantity+unit patterns like "50kg", "100g", "500ml" entirely
-  r = r.replace(/\d+(?:\.\d+)?\s*(kgs?|kg|grams?|g\b|mls?|ml|litres?|ltr?s?|l\b|pieces?|pcs?|packets?|pkt|nos?|units?|dozen)/gi, '')
-  r = r.replace(/\b(add|update|stock)\b/gi, '') // strip command words
+  r = r.replace(/\d+\.?\d*\s*(k|l|lac|lakh|cr|crore)/gi, '')
   r = r.replace(/\d+(\.\d+)?/g, '')
   return r.replace(/\s+/g, ' ').trim()
 }
@@ -671,7 +668,7 @@ const sanitize = (s: string) => s.replace(/\s+/g, ' ').replace(/[|]+/g, ' ').tri
 
 // ── F4: Micro-Inventory — localStorage-backed item tracker ────────────────────
 const INVENTORY_KEY = 'khata_inventory'
-interface InventoryItem { name: string; qty: number; unit: string; unitPrice: number; lastUpdated: string }
+interface InventoryItem { name: string; qty: number; unit: string; lastUpdated: string }
 type InventoryMap = Record<string, InventoryItem>
 
 // Items that typically need restocking alerts (threshold in units bought)
@@ -690,41 +687,21 @@ const updateInventory = (
   quantity: number | null,
   unit: string | null,
   txType: 'income' | 'expense',
-  inv: InventoryMap,
-  totalPrice?: number   // total amount paid — used to calculate unit price on purchase
-): { updated: InventoryMap; lowStock: string[]; autoAmount?: number } => {
+  inv: InventoryMap
+): { updated: InventoryMap; lowStock: string[] } => {
   if (!quantity || quantity <= 0) return { updated: inv, lowStock: [] }
   const key = description.toLowerCase().trim()
-  const prev = inv[key] ?? { name: description, qty: 0, unit: unit || 'unit', unitPrice: 0, lastUpdated: '' }
-  const delta = txType === 'expense' ? quantity : -quantity
-
-  // When buying stock with a known price → calculate and store unit price
-  // e.g. "50kg sugar 50000" → unitPrice = 50000/50 = ₹1000/kg
-  const newUnitPrice = (txType === 'expense' && totalPrice && totalPrice > 0 && quantity > 0)
-    ? Math.round(totalPrice / quantity)
-    : (prev.unitPrice || 0)
-
+  const prev = inv[key] ?? { name: description, qty: 0, unit: unit || 'unit', lastUpdated: '' }
+  const delta = txType === 'expense' ? quantity : -quantity // expense=buy=add; income=sell=subtract
   const newQty = Math.max(0, prev.qty + delta)
-
-  // When selling → auto-calculate sale amount from stored unit price
-  // e.g. "sold 2kg sugar" → autoAmount = 2 × 1000 = ₹2000
-  const autoAmount = (txType === 'income' && newUnitPrice > 0)
-    ? Math.round(quantity * newUnitPrice)
-    : undefined
-
   const updated: InventoryMap = {
     ...inv,
-    [key]: {
-      name:       description,
-      qty:        newQty,
-      unit:       unit || prev.unit,
-      unitPrice:  newUnitPrice,
-      lastUpdated: new Date().toISOString()
-    }
+    [key]: { name: description, qty: newQty, unit: unit || prev.unit, lastUpdated: new Date().toISOString() }
   }
   const lowStock = newQty <= RESTOCK_THRESHOLD ? [description] : []
-  return { updated, lowStock, autoAmount }
+  return { updated, lowStock }
 }
+
 const MORE_TABS = [
   { tab: 'reports'   as Tab, icon: <FileBarChart size={16} />, label: 'Reports',   business: false },
   { tab: 'customers' as Tab, icon: <Users size={16} />,        label: 'Udhaar',    business: false },
@@ -1267,17 +1244,8 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
             speakSaved(e.item, e.amount)
             // F4: Micro-Inventory — track qty, alert if stock depleted
             if (e.quantity && e.quantity > 0) {
-  const { updated, lowStock, autoAmount } = updateInventory(
-    e.item, e.quantity, e.unit, e.type as 'income' | 'expense', inventory,
-    e.type === 'expense' ? e.amount : undefined  // pass total price only on purchase
-  )
-  setInventory(updated); saveInventory(updated)
-
-  // If selling and no price was spoken, use auto-calculated price from inventory
-  if (e.type === 'income' && autoAmount && autoAmount > 0 && e.amount === 0) {
-    e.amount = autoAmount
-    console.log(`[AutoPrice] ${e.quantity}${e.unit} ${e.item} → ₹${autoAmount} (₹${Math.round(autoAmount/e.quantity)}/unit)`)
-  }
+              const { updated, lowStock } = updateInventory(e.item, e.quantity, e.unit, e.type as 'income' | 'expense', inventory)
+              setInventory(updated); saveInventory(updated)
               if (lowStock.length > 0) {
                 setLowStockAlerts(lowStock)
                 speakLowStock(lowStock[0])
@@ -1316,13 +1284,30 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
 
   useEffect(() => { processAndSaveRef.current = processAndSave as any }, [processAndSave])
 
+  // ── Mic hold handlers — with safety timeout to prevent stuck recording ──────
+  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const handleHoldStart = (e: React.MouseEvent | React.TouchEvent) => {
     if (e.cancelable) e.preventDefault()
-    if (!isBusy && !rateLimited) startRecording()
+    if (!isBusy && !rateLimited) {
+      startRecording()
+      // Safety: auto-stop after 30s if user forgets to release button
+      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current)
+      recordingTimeoutRef.current = setTimeout(() => {
+        stopRecording()
+        recordingTimeoutRef.current = null
+      }, 30000)
+    }
   }
   const handleHoldEnd = (e: React.MouseEvent | React.TouchEvent) => {
     if (e.cancelable) e.preventDefault()
-    stopRecording()
+    // Clear safety timeout
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current)
+      recordingTimeoutRef.current = null
+    }
+    // Only stop if actually recording — prevents double-stop ghost calls
+    if (isRecording || isVoiceBusy) stopRecording()
   }
 
   return (
@@ -1423,7 +1408,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
                 <span className="absolute inline-flex h-48 w-48 rounded-full bg-cyan/15 animate-ziva-ping will-change-transform" />
               )}
               <button
-                onMouseDown={handleHoldStart} onMouseUp={handleHoldEnd} onMouseLeave={handleHoldEnd}
+                onMouseDown={handleHoldStart} onMouseUp={handleHoldEnd}
                 onTouchStart={handleHoldStart} onTouchEnd={handleHoldEnd} onTouchCancel={handleHoldEnd}
                 disabled={isBusy || rateLimited}
                 className={`relative flex h-48 w-48 touch-none select-none items-center justify-center rounded-full transition-transform duration-150 will-change-transform
@@ -1432,7 +1417,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
                     : 'bg-navy-800 mic-idle active:scale-95'}
                   ${isBusy || rateLimited ? 'opacity-60' : ''}`}
               >
-                <Mic size={64} color="#FFFFFF" />
+                <Mic size={64} color="#00E5FF" />
               </button>
             </div>
 
@@ -1635,7 +1620,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
                     if (result.success) {
                       savedCount++
                       // F4: update inventory per saved item
-                      const { updated, lowStock } = updateInventory(item.description, null, null, item.type, inv, undefined)
+                      const { updated, lowStock } = updateInventory(item.description, null, null, item.type, inv)
                       inv = updated
                       if (lowStock.length > 0) {
                         setLowStockAlerts(lowStock)
