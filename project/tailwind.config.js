@@ -4,25 +4,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── ZivaKhata — Black / Grey / White Dark Theme ──────────────────────
         navy: {
-          950: '#0A0A0A',   // deepest black
-          900: '#111111',   // main app background
-          800: '#1C1C1C',   // card background
-          700: '#242424',   // elevated card / modal
-          600: '#333333',   // border / divider
-          500: '#444444',   // subtle highlight
-          400: '#666666',   // muted text background
+          950: '#0A0A0A',
+          900: '#111111',
+          800: '#1C1C1C',
+          700: '#242424',
+          600: '#333333',
+          500: '#444444',
+          400: '#666666',
         },
-        // White as primary accent — replaces cyan
         cyan: {
-          DEFAULT: '#FFFFFF',    // primary action — pure white
+          DEFAULT: '#FFFFFF',
           glow:    '#FFFFFF',
-          dim:     '#CCCCCC',    // hover state
-          muted:   '#FFFFFF15',  // 8% alpha backgrounds
-          border:  '#FFFFFF25',  // 15% alpha borders
+          dim:     '#CCCCCC',
+          muted:   '#FFFFFF14',
+          border:  '#FFFFFF26',
         },
-        // ── Legacy — kept so nothing breaks ──────────────────────────────────
         primary: {
           50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 300: '#fdba74',
           400: '#fb923c', 500: '#FF6B35', 600: '#ea580c',
@@ -34,16 +31,14 @@ export default {
           700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a',
         },
       },
-      // ── Shadows — white glow instead of cyan/gold ─────────────────────────
       boxShadow: {
-        'cyan-glow':  '0 0 20px 4px rgba(255,255,255,0.12)',
-        'cyan-pulse': '0 0 32px 8px rgba(255,255,255,0.18)',
-        'card-dark':  '0 4px 24px 0 rgba(0,0,0,0.60)',
+        'cyan-glow':  'none',
+        'cyan-pulse': 'none',
+        'card-dark':  '0 2px 12px 0 rgba(0,0,0,0.60)',
       },
-      // ── Keyframes ─────────────────────────────────────────────────────────
       keyframes: {
         'ziva-ping': {
-          '0%':   { transform: 'scale(1)',   opacity: '0.5', willChange: 'transform, opacity' },
+          '0%':   { transform: 'scale(1)',   opacity: '0.35', willChange: 'transform, opacity' },
           '100%': { transform: 'scale(1.7)', opacity: '0' },
         },
         'slide-up': {

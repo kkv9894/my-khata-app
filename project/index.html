@@ -13,27 +13,16 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.all.min.js"></script>
 
     <style>
-      * {
-        box-sizing: border-box;
-        -webkit-tap-highlight-color: transparent;
-      }
-
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body, #root {
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        background: #111111;
-        color: #FFFFFF;
+        height: 100%; margin: 0; padding: 0;
+        background: #111111; color: #FFFFFF;
         font-family: 'DM Sans', system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
       }
-
-      /* Grey scrollbar — no colour, no glow */
       ::-webkit-scrollbar { width: 3px; }
       ::-webkit-scrollbar-track { background: #0A0A0A; }
       ::-webkit-scrollbar-thumb { background: #333333; border-radius: 2px; }
-
-      /* Input placeholder */
       ::placeholder { color: #555555; opacity: 1; }
     </style>
 
@@ -43,7 +32,7 @@
       window.onload = function() {
         if (typeof lamejs !== 'undefined') {
           window.Lame = lamejs;
-          console.log('✅ ZivaKhata Audio Engine Ready');
+          console.log('ZivaKhata Audio Engine Ready');
         }
       };
     </script>
