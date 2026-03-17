@@ -144,12 +144,29 @@ export default function Auth({ language: _language = 'en' }: { language?: Suppor
       <div className="flex flex-col items-center justify-center bg-navy-950 px-6 pt-16 pb-12 text-white">
 
         {/* Logo — 128×128, centered, with cyan glow */}
-        <img
-  src="/logo.svg"
-  alt="ZivaKhata"
-  className="w-32 h-32 mx-auto mb-6 rounded-3xl shadow-gold-glow"
-  style={{ background: 'transparent' }}
-/>
+        {/* Inline SVG logo — no external file needed */}
+<div className="w-32 h-32 mx-auto mb-6 rounded-3xl flex items-center justify-center"
+     style={{ background: '#1C1C1C', border: '1px solid #333333' }}>
+  <svg viewBox="0 0 120 120" width="80" height="80" xmlns="http://www.w3.org/2000/svg">
+    {/* Flame */}
+    <path d="M60 10 C60 10 38 38 44 62 C48 76 60 84 60 84
+             C60 84 74 74 74 54 C74 38 60 22 60 10Z"
+          fill="white" opacity="0.9"/>
+    <path d="M60 36 C60 36 52 52 55 64 C57 70 60 74 60 74
+             C60 74 66 68 66 56 C66 48 60 42 60 36Z"
+          fill="#111111"/>
+    {/* Book */}
+    <path d="M18 72 Q40 62 60 78 Q80 62 102 72 L102 106
+             Q80 96 60 112 Q40 96 18 106Z"
+          fill="none" stroke="white" strokeWidth="6"
+          strokeLinejoin="round" strokeLinecap="round" opacity="0.9"/>
+    {/* Book lines */}
+    <path d="M28 82 Q44 74 60 84" fill="none" stroke="white"
+          strokeWidth="3" strokeLinecap="round" opacity="0.5"/>
+    <path d="M92 82 Q76 74 60 84" fill="none" stroke="white"
+          strokeWidth="3" strokeLinecap="round" opacity="0.5"/>
+  </svg>
+</div>
 
         {/* Dynamic brand name */}
         <h1 className="text-4xl font-black tracking-tighter text-white">
