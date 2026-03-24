@@ -29,12 +29,12 @@ interface TransactionDraft {
 }
 
 const T: Record<SupportedLanguage, Record<string, string>> = {
-  en: { hold: 'Tap to speak to Ziva', ai: '✨ Ziva is thinking...', saved: 'Ziva saved it!', mic_error: 'Mic Access Denied', offline: 'Offline Save', too_fast: 'Please wait...', speak_hint: '🎙️ Ziva is listening...' },
-  hi: { hold: 'Ziva से बात करें', ai: '✨ Ziva सोच रही है...', saved: 'Ziva ने save किया!', mic_error: 'माइक एक्सेस नहीं', offline: 'ऑफलाइन सेव', too_fast: 'थोड़ा इंतज़ार करें...', speak_hint: '🎙️ Ziva सुन रही है...' },
-  ta: { hold: 'Ziva-கிட்ட பேசுங்க', ai: '✨ Ziva யோசிக்கிறா...', saved: 'Ziva save பண்ணாச்சு!', mic_error: 'மைக் அனுமதி இல்லை', offline: 'ஆஃப்லைன் சேமிப்பு', too_fast: 'சிறிது காத்திருக்கவும்...', speak_hint: '🎙️ Ziva கேக்கிறா...' },
-  te: { hold: 'Ziva తో మాట్లాడండి', ai: '✨ Ziva ఆలోచిస్తోంది...', saved: 'Ziva save చేసింది!', mic_error: 'మైక్ అనుమతి లేదు', offline: 'ఆఫ్‌లైన్ సేవ్', too_fast: 'కొంచెం ఆగండి...', speak_hint: '🎙️ Ziva వింటోంది...' },
-  kn: { hold: 'Ziva ಜೊತೆ ಮಾತಾಡಿ', ai: '✨ Ziva ಯೋಚಿಸುತ್ತಿದ್ದಾಳೆ...', saved: 'Ziva save ಮಾಡಿದಳು!', mic_error: 'ಮೈಕ್ ಅನುಮತಿ ಇಲ್ಲ', offline: 'ಆಫ್‌ಲೈನ್ ಉಳಿಕೆ', too_fast: 'ಸ್ವಲ್ಪ ಕಾಯಿರಿ...', speak_hint: '🎙️ Ziva ಕೇಳುತ್ತಿದ್ದಾಳೆ...' },
-  ml: { hold: 'Ziva-യോട് സംസാരിക്കൂ', ai: '✨ Ziva ചിന്തിക്കുന്നു...', saved: 'Ziva save ചെയ്തു!', mic_error: 'മൈക്ക് അനുമതിയില്ല', offline: 'ഓഫ്‌ലൈൻ സേവ്', too_fast: 'കാത്തിരിക്കൂ...', speak_hint: '🎙️ Ziva കേൾക്കുന്നു...' },
+  en: { hold: 'Tap mic to speak', ai: '✨ Ziva is thinking...', saved: 'Ziva saved it!', mic_error: 'Mic Access Denied', offline: 'Offline Save', too_fast: 'Please wait...', speak_hint: '🎙️ Listening... tap mic again to save', tap_stop: 'Tap mic again to save ✓' },
+  hi: { hold: 'Mic tap karke baat karein', ai: '✨ Ziva सोच रही है...', saved: 'Ziva ने save किया!', mic_error: 'माइक एक्सेस नहीं', offline: 'ऑफलाइन सेव', too_fast: 'थोड़ा इंतज़ार करें...', speak_hint: '🎙️ Ziva सुन रही है... रोकने के लिए mic tap करें', tap_stop: 'Save करने के लिए mic tap करें ✓' },
+  ta: { hold: 'Mic tap pannu', ai: '✨ Ziva யோசிக்கிறா...', saved: 'Ziva save பண்ணாச்சு!', mic_error: 'மைக் அனுமதி இல்லை', offline: 'ஆஃப்லைன் சேமிப்பு', too_fast: 'சிறிது காத்திருக்கவும்...', speak_hint: '🎙️ Ziva கேக்கிறா... save பண்ண mic tap பண்ணு', tap_stop: 'Save பண்ண mic tap பண்ணு ✓' },
+  te: { hold: 'Mic tap cheyyandi', ai: '✨ Ziva ఆలోచిస్తోంది...', saved: 'Ziva save చేసింది!', mic_error: 'మైక్ అనుమతి లేదు', offline: 'ఆఫ్‌లైన్ సేవ్', too_fast: 'కొంచెం ఆగండి...', speak_hint: '🎙️ Ziva వింటోంది... save కి mic tap cheyyandi', tap_stop: 'Save కి mic tap cheyyandi ✓' },
+  kn: { hold: 'Mic tap maadi', ai: '✨ Ziva ಯೋಚಿಸುತ್ತಿದ್ದಾಳೆ...', saved: 'Ziva save ಮಾಡಿದಳು!', mic_error: 'ಮೈಕ್ ಅನುಮತಿ ಇಲ್ಲ', offline: 'ಆಫ್‌ಲೈನ್ ಉಳಿಕೆ', too_fast: 'ಸ್ವಲ್ಪ ಕಾಯಿರಿ...', speak_hint: '🎙️ Ziva ಕೇಳುತ್ತಿದ್ದಾಳೆ... save ge mic tap maadi', tap_stop: 'Save ge mic tap maadi ✓' },
+  ml: { hold: 'Mic tap cheyyuka', ai: '✨ Ziva ചിന്തിക്കുന്നു...', saved: 'Ziva save ചെയ്തു!', mic_error: 'മൈക്ക് അനുമതിയില്ല', offline: 'ഓഫ്‌ലൈൻ സേവ്', too_fast: 'കാത്തിരിക്കൂ...', speak_hint: '🎙️ Ziva കേൾക്കുന്നു... save cheyyaan mic tap cheyyuka', tap_stop: 'Save cheyyaan mic tap cheyyuka ✓' },
 }
 
 // ── Income keywords ───────────────────────────────────────────────────────────
@@ -1284,31 +1284,19 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
 
   useEffect(() => { processAndSaveRef.current = processAndSave as any }, [processAndSave])
 
-  // ── Mic hold handlers — with safety timeout to prevent stuck recording ──────
+  // ── Auto-stop safety: if user forgets to tap again, stop after 60s ──────────
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const handleHoldStart = (e: React.MouseEvent | React.TouchEvent) => {
-    if (e.cancelable) e.preventDefault()
-    if (!isBusy && !rateLimited) {
-      startRecording()
-      // Safety: auto-stop after 30s if user forgets to release button
+  useEffect(() => {
+    if (isRecording) {
       if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current)
       recordingTimeoutRef.current = setTimeout(() => {
         stopRecording()
         recordingTimeoutRef.current = null
-      }, 30000)
+      }, 60000)
+    } else {
+      if (recordingTimeoutRef.current) { clearTimeout(recordingTimeoutRef.current); recordingTimeoutRef.current = null }
     }
-  }
-  const handleHoldEnd = (e: React.MouseEvent | React.TouchEvent) => {
-    if (e.cancelable) e.preventDefault()
-    // Clear safety timeout
-    if (recordingTimeoutRef.current) {
-      clearTimeout(recordingTimeoutRef.current)
-      recordingTimeoutRef.current = null
-    }
-    // Only stop if actually recording — prevents double-stop ghost calls
-    if (isRecording || isVoiceBusy) stopRecording()
-  }
+  }, [isRecording, stopRecording])
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-navy-900">
@@ -1401,21 +1389,24 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
               </div>
             )}
 
-            {/* Mic button — isolated layer, GPU-composited animation only */}
+            {/* Mic button — TAP TO START, TAP AGAIN TO SAVE */}
             <div className="relative flex items-center justify-center isolate">
-              {/* Pulse ring: transform+opacity ONLY — no box-shadow, no filter */}
               {isRecording && (
-                <span className="absolute inline-flex h-48 w-48 rounded-full bg-cyan/15 animate-ziva-ping will-change-transform" />
+                <span className="absolute inline-flex h-48 w-48 rounded-full bg-white/10 animate-ziva-ping will-change-transform" />
               )}
               <button
-                onMouseDown={handleHoldStart} onMouseUp={handleHoldEnd}
-                onTouchStart={handleHoldStart} onTouchEnd={handleHoldEnd} onTouchCancel={handleHoldEnd}
-                disabled={isBusy || rateLimited}
-                className={`relative flex h-48 w-48 touch-none select-none items-center justify-center rounded-full transition-transform duration-150 will-change-transform
+                onClick={() => {
+                  if (isVoiceBusy && !isRecording) return
+                  if (rateLimited) return
+                  if (isRecording) stopRecording()
+                  else startRecording()
+                }}
+                disabled={isVoiceBusy && !isRecording}
+                className={`relative flex h-48 w-48 select-none items-center justify-center rounded-full transition-transform duration-150 will-change-transform
                   ${isRecording
                     ? 'scale-110 bg-navy-800 mic-listening'
                     : 'bg-navy-800 mic-idle active:scale-95'}
-                  ${isBusy || rateLimited ? 'opacity-60' : ''}`}
+                  ${(isVoiceBusy && !isRecording) || rateLimited ? 'opacity-60' : ''}`}
               >
                 <Mic size={64} color="#FFFFFF" />
               </button>
