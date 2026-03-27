@@ -1,64 +1,50 @@
-// api/gemini.ts — ZivaKhata Vercel Serverless Function
-//
-// Handles 3 actions:
-//   'post'             — text-only Gemini call
-//   'scan-receipt'     — Gemini Vision for receipt images
-//   'transcribe-audio' — Gemini 1.5 Flash multimodal audio -> transcript
-//
-// FIXES:
-//   FIX A: Dynamic mimeType from frontend used in inlineData (not hardcoded)
-//   FIX B: Exact Google error message returned to frontend (no swallowing)
-//   FIX C: Exponential backoff 2s->4s->8s on 429 rate limit errors
+// FILE: api/gemini.ts
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? ''
-const MODEL    = 'gemini-2.5-flash'
+const MODEL = 'gemini-2.5-flash'
 const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`
 
-// FIX C: Exponential backoff retry wrapper
-// Retries only on 429. All other errors thrown immediately.
 async function callGeminiWithRetry(
   body: object,
   maxRetries = 3,
-  timeoutMs  = 25000
+  timeoutMs = 25000
 ): Promise<any> {
   let lastError: Error = new Error('Unknown error')
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (attempt > 0) {
-      const waitMs = Math.pow(2, attempt) * 1000  // 2s, 4s, 8s
+      const waitMs = Math.pow(2, attempt) * 1000
       console.log(`[Gemini] 429 retry ${attempt}/${maxRetries - 1} — waiting ${waitMs}ms`)
       await new Promise(resolve => setTimeout(resolve, waitMs))
     }
 
     const controller = new AbortController()
-    const timer      = setTimeout(() => controller.abort(), timeoutMs)
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
       const response = await fetch(`${BASE_URL}?key=${GEMINI_API_KEY}`, {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal:  controller.signal,
-        body:    JSON.stringify(body),
+        signal: controller.signal,
+        body: JSON.stringify(body),
       })
 
       clearTimeout(timer)
 
       if (response.status === 429) {
         lastError = new Error('429 Rate limit exceeded')
-        continue  // retry
+        continue
       }
 
       if (!response.ok) {
-        // FIX B: Read exact error from Google and throw it
         const errText = await response.text().catch(() => response.statusText)
         console.error(`[Gemini] API error ${response.status}:`, errText)
         throw new Error(`Gemini error ${response.status}: ${errText}`)
       }
 
       return await response.json()
-
     } catch (err: any) {
       clearTimeout(timer)
 
@@ -66,7 +52,6 @@ async function callGeminiWithRetry(
         throw new Error('Gemini request timed out')
       }
 
-      // Don't retry non-429 errors
       if (!err?.message?.includes('429')) {
         throw err
       }
@@ -79,13 +64,52 @@ async function callGeminiWithRetry(
 }
 
 function extractText(data: any): string {
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const parts = data?.candidates?.[0]?.content?.parts
+  if (!Array.isArray(parts)) return ''
+  return parts
+    .map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
+    .join(' ')
+    .trim()
+}
+
+function normalizeAudioMimeType(mimeType: string): string {
+  const mt = String(mimeType || '').toLowerCase()
+
+  if (mt.includes('webm')) return 'audio/webm'
+  if (mt.includes('mp4') || mt.includes('m4a')) return 'audio/mp4'
+  if (mt.includes('mpeg') || mt.includes('mp3')) return 'audio/mpeg'
+  if (mt.includes('wav')) return 'audio/wav'
+  if (mt.includes('ogg')) return 'audio/ogg'
+
+  return 'audio/webm'
+}
+
+function cleanTranscriptText(text: string): string {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isPromptEcho(text: string): boolean {
+  const t = cleanTranscriptText(text).toLowerCase()
+
+  if (!t) return false
+
+  return (
+    t.startsWith('sorry') ||
+    t.startsWith('you are ziva') ||
+    t.startsWith('transcribe this audio') ||
+    t.startsWith('the user recorded') ||
+    t.startsWith('your task') ||
+    t.includes('voice transcription engine for zivakhata') ||
+    t.includes('return only the transcribed text') ||
+    t.includes('return only the transcript text')
+  )
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin',  '*')
+    res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     return res.status(204).end()
@@ -104,12 +128,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log(`[api/gemini] action="${action}"`)
 
   try {
-
-    // ── ACTION: transcribe-audio ────────────────────────────────────────────
     if (action === 'transcribe-audio') {
       const {
         base64Audio,
-        mimeType = 'audio/webm',  // FIX A: use mimeType from frontend
+        mimeType = 'audio/webm',
         language = 'en',
       } = payload ?? {}
 
@@ -117,67 +139,71 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'payload.base64Audio is required' })
       }
 
-      console.log(`[transcribe-audio] lang=${language} | mime=${mimeType} | base64Length=${base64Audio.length}`)
+      console.log(
+        `[transcribe-audio] lang=${language} | mime=${mimeType} | base64Length=${base64Audio.length}`
+      )
 
       const LANG_NAMES: Record<string, string> = {
-        en: 'English (Indian accent)',
+        en: 'English',
         hi: 'Hindi',
         ta: 'Tamil',
         te: 'Telugu',
         kn: 'Kannada',
         ml: 'Malayalam',
       }
+
       const langName = LANG_NAMES[language] ?? 'English'
+      const safeMimeType = normalizeAudioMimeType(mimeType)
 
-      const transcribePrompt = `You are Ziva, a voice transcription engine for ZivaKhata, an Indian shopkeeper ledger app.
+      const transcribePrompt = `Transcribe this audio exactly as spoken.
 
-The user recorded a voice note in ${langName} or a mix of ${langName} and English.
-Code-switching is extremely common in India.
+Language may be ${langName} mixed with English.
+Keep code-mixed words exactly as spoken.
+Write numbers as digits.
+Keep units exactly: kg, g, ml, l, packet, packets, piece, pieces.
+Do not explain anything.
+Do not translate anything.
+If speech is unclear or silent, return empty string.
 
-YOUR TASK: Transcribe the audio EXACTLY as spoken.
-- Keep original words (do not translate)
-- Keep mixed language as-is (e.g. "milk ku 50 rupees" stays as "milk ku 50 rupees")
-- Write numbers as digits (e.g. "fifty" -> 50, "five hundred" -> 500)
-- CRITICAL: Weight/quantity units must be transcribed accurately:
-  "fifty kg" -> "50 kg", "hundred grams" -> "100 g", "five hundred ml" -> "500 ml"
-  Never merge a number and unit into a different number (e.g. "50 kg" must NOT become "850g")
-- Remove filler sounds (um, uh, ah) but keep all meaningful words
-- If audio is silent or completely inaudible, return empty string only
-
-Return ONLY the transcribed text. No explanations, no punctuation changes, no JSON, no markdown.`
+Return only the transcript text.`
 
       const requestBody = {
-        contents: [{
-          parts: [
-            {
-              // FIX A: Use dynamic mimeType sent from frontend
-              // Android Chrome -> audio/webm;codecs=opus
-              // iOS Safari     -> audio/mp4
-              inlineData: {
-                data:     base64Audio,
-                mimeType: mimeType,
+        contents: [
+          {
+            parts: [
+              { text: transcribePrompt },
+              {
+                inlineData: {
+                  data: base64Audio,
+                  mimeType: safeMimeType,
+                },
               },
-            },
-            { text: transcribePrompt },
-          ],
-        }],
+            ],
+          },
+        ],
         generationConfig: {
           temperature: 0.0,
-          topP:        0.1,
-          topK:        1,
+          topP: 0.1,
+          topK: 1,
         },
       }
 
       const data = await callGeminiWithRetry(requestBody, 3, 25000)
-      const text = extractText(data).trim()
+      const rawText = extractText(data)
+      const text = cleanTranscriptText(rawText)
+
+      if (isPromptEcho(text)) {
+        console.warn('[transcribe-audio] prompt echo detected:', text)
+        return res.status(200).json({ text: '' })
+      }
 
       console.log(`[transcribe-audio] result="${text}"`)
       return res.status(200).json({ text })
     }
 
-    // ── ACTION: post (text-only) ────────────────────────────────────────────
     if (action === 'post') {
       const { body: geminiBody, timeoutMs = 15000 } = payload ?? {}
+
       if (!geminiBody) {
         return res.status(400).json({ error: 'payload.body is required' })
       }
@@ -188,9 +214,9 @@ Return ONLY the transcribed text. No explanations, no punctuation changes, no JS
       return res.status(200).json({ text })
     }
 
-    // ── ACTION: scan-receipt ────────────────────────────────────────────────
     if (action === 'scan-receipt') {
       const { base64Image, mimeType = 'image/jpeg' } = payload ?? {}
+
       if (!base64Image) {
         return res.status(400).json({ error: 'payload.base64Image is required' })
       }
@@ -206,37 +232,37 @@ OUTPUT: JSON only, no markdown, no backticks.
 {"amount": number, "description": "string", "category": "string", "date": "YYYY-MM-DD"}`
 
       const requestBody = {
-        contents: [{
-          parts: [
-            { inlineData: { data: base64Image, mimeType } },
-            { text: receiptPrompt },
-          ],
-        }],
+        contents: [
+          {
+            parts: [
+              { inlineData: { data: base64Image, mimeType } },
+              { text: receiptPrompt },
+            ],
+          },
+        ],
         generationConfig: { temperature: 0.1, topP: 0.1, topK: 1 },
       }
 
       const data = await callGeminiWithRetry(requestBody, 3, 25000)
-      const raw  = extractText(data)
+      const raw = extractText(data)
 
       console.log(`[scan-receipt] raw="${raw}"`)
       return res.status(200).json({ raw })
     }
 
     return res.status(400).json({ error: `Unknown action: "${action}"` })
-
   } catch (err: any) {
-    // FIX B: Return exact error message — never swallow it
     const message = err?.message ?? 'Internal server error'
     console.error(`[api/gemini] action="${action}" FAILED:`, message)
 
     if (message.includes('429')) {
       return res.status(429).json({ error: 'AI rate limit reached. Please wait a moment and try again.' })
     }
+
     if (message.includes('timed out')) {
       return res.status(504).json({ error: 'AI request timed out. Please try again.' })
     }
 
-    // FIX B: Send exact Google error back so frontend can log it
     return res.status(500).json({ error: message })
   }
 }
