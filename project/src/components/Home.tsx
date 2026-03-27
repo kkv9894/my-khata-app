@@ -4,8 +4,9 @@ import { useAuth } from '../contexts/AuthContext'
 import { useRole } from '../contexts/RoleContext'
 import { supabase } from '../lib/supabase'
 import { analyzeTransaction, detectVoiceIntent } from '../lib/gemini'
+import type { ParsedVoiceEntry, TransactionCategoryLabel } from '../lib/types'
 import useOfflineSync, { type TransactionPayload } from '../hooks/useOfflineSync'
-import useVoiceRecorder, { type SttConfidence } from '../hooks/useVoiceRecorder'
+import useAudioRecorder, { type SttConfidence } from '../hooks/useAudioRecorder'
 import AiChat from './AiChat'
 import BusinessInsights from './BusinessInsights'
 import Customers from './Customers'
@@ -26,6 +27,17 @@ interface TransactionDraft {
   description: string
   type: TransactionType
   voice_transcript: string
+}
+
+interface ConfirmDialogItem {
+  item: string
+  description: string
+  amount: number
+  type: TransactionType
+  category: TransactionCategoryLabel
+  quantity: number | null
+  unit: string | null
+  customer_name: string | null
 }
 
 const T: Record<SupportedLanguage, Record<string, string>> = {
@@ -882,7 +894,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
   )
   const [confirmDialog, setConfirmDialog] = useState<{
     transcript: string
-    items: Array<{ description: string; amount: number; type: 'income' | 'expense'; category: string }>
+    items: ConfirmDialogItem[]
   } | null>(null)
 
   // ── F1: Smart Clerk — query answer to show on mic screen ──────────────────
@@ -900,21 +912,20 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
 
   const processAndSaveRef = useRef<(transcript: string, confidence: SttConfidence) => Promise<void>>(async () => {})
 
-  const {
+    const {
     isRecording, isProcessing: isVoiceBusy,
     liveText, processingStep, providerUsed,
     startRecording, stopRecording,
-  } = useVoiceRecorder({
+  } = useAudioRecorder({
     language,
-    sarvamKey:       import.meta.env.VITE_SARVAM_API_KEY      ?? '',
-    googleKey:       import.meta.env.VITE_GOOGLE_STT_KEY      ?? '',
-    googleProjectId: import.meta.env.VITE_GOOGLE_PROJECT_ID   ?? '',
-    elevenLabsKey:   import.meta.env.VITE_ELEVENLABS_API_KEY  ?? '',
     onTranscript: (transcript: string, confidence: SttConfidence) => {
       void processAndSaveRef.current(sanitize(transcript), confidence)
     },
-    onError:     (msg: string) => setErrorMsg(msg),
-    onRateLimit: () => { setRateLimited(true); window.setTimeout(() => setRateLimited(false), 3000) },
+    onError: (msg: string) => setErrorMsg(msg),
+    onRateLimit: () => {
+      setRateLimited(true)
+      window.setTimeout(() => setRateLimited(false), 3000)
+    },
   })
 
   const isBusy = isAiLoading || isVoiceBusy
@@ -1064,7 +1075,8 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
   // 4. Does NOT use repairPayload (avoids adding category_label: null to payloads)
   const directSave = useCallback(async (row: {
     amount: number; description: string; type: string; user_id: string;
-    voice_transcript?: string; transaction_date: string; created_at: string;
+    voice_transcript?: string; category_label?: TransactionCategoryLabel | null;
+    transaction_date: string; created_at: string;
   }): Promise<{ success: boolean; offline?: boolean; error?: string }> => {
     if (!navigator.onLine) {
       return saveTransaction(row as TransactionPayload)
@@ -1108,6 +1120,97 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
       return saveTransaction(row as TransactionPayload)
     }
   }, [saveTransaction])
+
+  const saveUdhaarCustomerEntry = useCallback(async (params: {
+    customerName: string
+    amount: number
+    note: string
+  }): Promise<{ success: boolean; error?: string }> => {
+    if (!user?.id) return { success: false, error: 'User not found' }
+
+    const customerName = sanitize(params.customerName)
+    if (!customerName) return { success: false, error: 'Customer name missing' }
+
+    try {
+      let customer: { id: string; total_credit: number } | null = null
+
+      const { data: existingCustomer, error: findError } = await supabase
+        .from('udhaar_customers')
+        .select('id, total_credit')
+        .eq('user_id', user.id)
+        .ilike('name', customerName)
+        .maybeSingle()
+
+      if (findError) return { success: false, error: findError.message }
+
+      if (existingCustomer) {
+        customer = {
+          id: existingCustomer.id,
+          total_credit: Number(existingCustomer.total_credit ?? 0),
+        }
+      } else {
+        const { data: createdCustomer, error: createError } = await supabase
+          .from('udhaar_customers')
+          .insert([{
+            user_id: user.id,
+            name: customerName,
+            notes: '',
+          }])
+          .select('id, total_credit')
+          .single()
+
+        if (createError || !createdCustomer) {
+          return { success: false, error: createError?.message ?? 'Could not create customer' }
+        }
+
+        customer = {
+          id: createdCustomer.id,
+          total_credit: Number(createdCustomer.total_credit ?? 0),
+        }
+      }
+
+      if (params.amount > 0) {
+        const { error: txError } = await supabase
+          .from('udhaar_transactions')
+          .insert([{
+            customer_id: customer.id,
+            user_id: user.id,
+            type: 'credit',
+            amount: params.amount,
+            note: params.note,
+          }])
+
+        if (txError) return { success: false, error: txError.message }
+
+        const { error: updateError } = await supabase
+          .from('udhaar_customers')
+          .update({
+            total_credit: customer.total_credit + params.amount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', customer.id)
+
+        if (updateError) return { success: false, error: updateError.message }
+      }
+
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Could not save Udhaar entry',
+      }
+    }
+  }, [user?.id])
+
+  const buildVoiceEntryDescription = useCallback((entry: ParsedVoiceEntry): string => {
+    const itemText = entry.quantity
+      ? `${entry.quantity}${entry.unit ?? ''} ${entry.item}`.trim()
+      : entry.item
+
+    return entry.customer_name
+      ? `${sanitize(entry.customer_name)} - ${itemText}`
+      : itemText
+  }, [])
 
   const openManualForm = useCallback((transcript: string) => {
     const cleaned = sanitize(transcript)
@@ -1201,16 +1304,19 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
 
     if (aiParsed && aiParsed.is_financial === false) { openManualForm(transcript); return }
 
-    type ParsedEntry = { item: string; amount: number; quantity: number | null; unit: string | null; type: string; category: string }
-    const aiEntries: ParsedEntry[] = (aiParsed?.entries && Array.isArray(aiParsed.entries)) ? aiParsed.entries as ParsedEntry[] : []
+    const aiEntries: ParsedVoiceEntry[] = (aiParsed?.entries && Array.isArray(aiParsed.entries)) ? aiParsed.entries as ParsedVoiceEntry[] : []
     const aiConf = aiParsed?.confidence ?? 'low'
 
     if (aiEntries.length > 0) {
-      const toDialogItems = (entries: ParsedEntry[]) => entries.map(e => ({
-        description: e.quantity ? `${e.quantity}${e.unit ?? ''} ${e.item}`.trim() : e.item,
-        amount:      e.amount,
-        type:        (e.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
-        category:    e.category || 'General',
+      const toDialogItems = (entries: ParsedVoiceEntry[]): ConfirmDialogItem[] => entries.map(e => ({
+        item: e.item,
+        description: buildVoiceEntryDescription(e),
+        amount: e.amount,
+        type: (e.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
+        category: e.category || 'General',
+        quantity: e.quantity ?? null,
+        unit: e.unit ?? null,
+        customer_name: e.customer_name ?? null,
       }))
 
       // Low confidence → confirm dialog
@@ -1225,24 +1331,34 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
       // Single item + high confidence → auto-save
       if (aiEntries.length === 1 && (aiConf === 'high' || (aiConf === 'medium' && sttConf === 'high'))) {
         const e = aiEntries[0]
-        const desc = e.quantity ? `${e.quantity}${e.unit ?? ''} ${e.item}`.trim() : e.item
+        const desc = buildVoiceEntryDescription(e)
         setAiStep('Saving...')
         const insertedAt = new Date().toISOString()
         try {
           const ok = await directSave({
-            amount:           e.amount,
-            description:      desc,
-            type:             e.type || 'expense',
-            user_id:          user.id,
+            amount: e.amount,
+            description: desc,
+            type: e.type || 'expense',
+            user_id: user.id,
             voice_transcript: transcript,
+            category_label: e.category,
             transaction_date: insertedAt.split('T')[0],
-            created_at:       insertedAt,
+            created_at: insertedAt,
           })
+
+          let udhaarError = ''
+          if (ok.success && e.category === 'Udhaar' && e.customer_name) {
+            const udhaarResult = await saveUdhaarCustomerEntry({
+              customerName: e.customer_name,
+              amount: e.amount,
+              note: desc,
+            })
+            if (!udhaarResult.success) udhaarError = udhaarResult.error ?? 'Udhaar save failed'
+          }
+
           if (ok.success) {
-            // F3: Soundbox — speak rich confirmation with item name + amount
             setIsAiLoading(false); setAiStep(''); setSaveSuccess(true)
             speakSaved(e.item, e.amount)
-            // F4: Micro-Inventory — track qty, alert if stock depleted
             if (e.quantity && e.quantity > 0) {
               const { updated, lowStock } = updateInventory(e.item, e.quantity, e.unit, e.type as 'income' | 'expense', inventory)
               setInventory(updated); saveInventory(updated)
@@ -1253,6 +1369,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
               }
             }
             if (ok.offline) setErrorMsg(t.offline)
+            else if (udhaarError) setErrorMsg(`Transaction saved, but ${udhaarError}`)
             setTimeout(() => { setSaveSuccess(false); goToTransactions() }, 1600)
           } else {
             setErrorMsg(ok.error ?? 'Save failed')
@@ -1272,7 +1389,19 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
     const multiItems = localParseMulti(transcript)
     if (multiItems && multiItems.length >= 2) {
       setIsAiLoading(false); setAiStep('')
-      setConfirmDialog({ transcript, items: multiItems.map(e => ({ description: e.item, amount: e.amount, type: e.type as 'income' | 'expense', category: 'General' })) })
+      setConfirmDialog({
+  transcript,
+  items: multiItems.map(e => ({
+    item: e.item,
+    description: e.item,
+    amount: e.amount,
+    type: e.type as 'income' | 'expense',
+    category: 'General',
+    quantity: null,
+    unit: null,
+    customer_name: null,
+  }))
+})
       return
     }
     if (local.amount > 0) {
@@ -1280,7 +1409,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
       setShowForm(true); setIsAiLoading(false); setAiStep(''); return
     }
     openManualForm(transcript)
-  }, [directSave, goToTransactions, inventory, language, localParseMulti, openManualForm, saveTransaction, speakLowStock, speakSaved, t.offline, user])
+  }, [accountType, buildVoiceEntryDescription, directSave, goToTransactions, inventory, localParseMulti, openManualForm, saveUdhaarCustomerEntry, speakLowStock, speakSaved, t.offline, user])
 
   useEffect(() => { processAndSaveRef.current = processAndSave as any }, [processAndSave])
 
@@ -1600,18 +1729,30 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
                   for (const item of d.items) {
                     const now = new Date().toISOString()
                     const result = await directSave({
-                      amount:           item.amount,
-                      description:      item.description,
-                      type:             item.type,
-                      user_id:          user.id,
+                      amount: item.amount,
+                      description: item.description,
+                      type: item.type,
+                      user_id: user.id,
                       voice_transcript: d.transcript,
+                      category_label: item.category,
                       transaction_date: now.split('T')[0],
-                      created_at:       now,
+                      created_at: now,
                     })
                     if (result.success) {
                       savedCount++
-                      // F4: update inventory per saved item
-                      const { updated, lowStock } = updateInventory(item.description, null, null, item.type, inv)
+
+                      if (item.category === 'Udhaar' && item.customer_name) {
+                        const udhaarResult = await saveUdhaarCustomerEntry({
+                          customerName: item.customer_name,
+                          amount: item.amount,
+                          note: item.description,
+                        })
+                        if (!udhaarResult.success) {
+                          lastError = udhaarResult.error ?? 'Udhaar save failed'
+                        }
+                      }
+
+                      const { updated, lowStock } = updateInventory(item.item, item.quantity, item.unit, item.type, inv)
                       inv = updated
                       if (lowStock.length > 0) {
                         setLowStockAlerts(lowStock)

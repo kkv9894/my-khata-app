@@ -1,6 +1,14 @@
-﻿// src/lib/gemini.ts
+﻿// FILE: src/lib/gemini.ts
+
+// src/lib/gemini.ts
 // ✅ SECURE: All Gemini API calls go through /api/gemini (Vercel serverless).
 // No API keys are exposed to the browser. Zero VITE_ keys needed.
+
+import type {
+  ParsedVoiceEntry,
+  ParsedVoiceTransactionResult,
+  TransactionCategoryLabel,
+} from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTERNAL: Shared proxy helper — calls our /api/gemini serverless function
@@ -35,9 +43,50 @@ const geminiPost = async (body: object, timeoutMs = 15000): Promise<string> => {
 };
 
 const extractJson = (raw: string): any => {
-  const s = raw.indexOf('{'); const e = raw.lastIndexOf('}') + 1;
+  const cleaned = String(raw || '')
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  const s = cleaned.indexOf('{');
+  const e = cleaned.lastIndexOf('}') + 1;
   if (s === -1 || e === 0) throw new Error('No JSON in response');
-  return JSON.parse(raw.substring(s, e).trim());
+  return JSON.parse(cleaned.substring(s, e).trim());
+};
+
+const VALID_CATEGORIES: TransactionCategoryLabel[] = [
+  'Food',
+  'Fuel',
+  'Salary',
+  'Rent',
+  'Sales',
+  'Shopping',
+  'Groceries',
+  'Transport',
+  'Healthcare',
+  'Utilities',
+  'Entertainment',
+  'Education',
+  'Udhaar',
+  'General',
+];
+
+const normalizeCategory = (value: unknown): TransactionCategoryLabel => {
+  const category = String(value || '').trim();
+  return (VALID_CATEGORIES.includes(category as TransactionCategoryLabel)
+    ? category
+    : 'General') as TransactionCategoryLabel;
+};
+
+const normalizeConfidence = (value: unknown): 'high' | 'medium' | 'low' => {
+  if (value === 'high' || value === 'medium' || value === 'low') return value;
+  return 'medium';
+};
+
+const toSafeNumber = (value: unknown): number => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,21 +99,21 @@ export async function detectVoiceIntent(
 
   const QUERY_SIGNALS = [
     // English
-    'how much','total','what is','what are','who owes','show me','tell me',
-    'how many','balance','profit','summary','report','today','yesterday','this week',
-    'last week','this month','best selling','most','least','average','compare',
+    'how much', 'total', 'what is', 'what are', 'who owes', 'show me', 'tell me',
+    'how many', 'balance', 'profit', 'summary', 'report', 'today', 'yesterday', 'this week',
+    'last week', 'this month', 'best selling', 'most', 'least', 'average', 'compare',
     // Tamil / Tanglish
-    'எவ்வளவு','மொத்தம்','யார்','சரியா','எத்தனை','பாக்கி','என்ன','சொல்லு',
-    'evvalavu','mottam','yaaru','etthanai','baaki','solunga','sollu','solvaen',
+    'எவ்வளவு', 'மொத்தம்', 'யார்', 'சரியா', 'எத்தனை', 'பாக்கி', 'என்ன', 'சொல்லு',
+    'evvalavu', 'mottam', 'yaaru', 'etthanai', 'baaki', 'solunga', 'sollu', 'solvaen',
     // Hindi / Hinglish
-    'कितना','कुल','किसने','बताओ','क्या है','कितने','रिपोर्ट',
-    'kitna','kul','kisne','batao','kya hai','report','balance kya',
+    'कितना', 'कुल', 'किसने', 'बताओ', 'क्या है', 'कितने', 'रिपोर्ट',
+    'kitna', 'kul', 'kisne', 'batao', 'kya hai', 'report', 'balance kya',
     // Telugu
-    'ఎంత','మొత్తం','ఎవరు','చెప్పండి','నివేదిక',
+    'ఎంత', 'మొత్తం', 'ఎవరు', 'చెప్పండి', 'నివేదిక',
     // Kannada
-    'ಎಷ್ಟು','ಒಟ್ಟು','ಯಾರು','ಹೇಳಿ','ವರದಿ',
+    'ಎಷ್ಟು', 'ಒಟ್ಟು', 'ಯಾರು', 'ಹೇಳಿ', 'ವರದಿ',
     // Malayalam
-    'എത്ര','ആകെ','ആര്','പറയൂ','റിപ്പോർട്ട്',
+    'എത്ര', 'ആകെ', 'ആര്', 'പറയൂ', 'റിപ്പോർട്ട്',
   ];
 
   const lo = text.toLowerCase();
@@ -117,7 +166,10 @@ OUTPUT: JSON only, no markdown.
 // ✅ analyzeTransaction — voice → structured financial entries
 // F7: Full code-switching — Tanglish/Hinglish/Telugish/Kanglish/Malayalish
 // ─────────────────────────────────────────────────────────────────────────────
-export async function analyzeTransaction(text: string, accountType: 'personal' | 'business' = 'business') {
+export async function analyzeTransaction(
+  text: string,
+  accountType: 'personal' | 'business' = 'business'
+): Promise<ParsedVoiceTransactionResult | null> {
 
   const personaContext = accountType === 'business'
     ? `You are Ziva, a sharp and professional shop assistant AI for "ZivaKhata". You help Indian shopkeepers track sales, expenses, Udhaar (credit), and inventory via voice. Be precise and fast.`
@@ -269,29 +321,80 @@ OUTPUT: JSON only. No markdown, no backticks, no extra text.
       generationConfig: { temperature: 0.1, topP: 0.1, topK: 1 }
     }, 12000);
 
-    if (!raw) { console.warn('analyzeTransaction: empty response'); return null; }
+    if (!raw) {
+      console.warn('analyzeTransaction: empty response');
+      return null;
+    }
 
     const parsed = extractJson(raw);
 
-    const rawEntries = Array.isArray(parsed.entries) ? parsed.entries
-      : parsed.amount > 0
-        ? [{ item: parsed.description || 'Voice Entry', amount: parsed.amount, type: parsed.type, category: parsed.category, quantity: null, unit: null }]
+    const rawEntries = Array.isArray(parsed.entries)
+      ? parsed.entries
+      : (
+          parsed.amount != null &&
+          (
+            Number(parsed.amount) > 0 ||
+            String(parsed.category || '').trim() === 'Udhaar'
+          )
+        )
+        ? [{
+            item: parsed.description || 'Voice Entry',
+            amount: parsed.amount,
+            type: parsed.type,
+            category: parsed.category,
+            quantity: parsed.quantity ?? null,
+            unit: parsed.unit ?? null,
+            customer_name: parsed.customer_name ?? null,
+          }]
         : [];
 
-    const entries = rawEntries
-      .filter((e: any) => Number(e.amount) > 0)
-      .map((e: any) => ({
-        item:     String(e.item || 'Voice Entry').trim(),
-        amount:   Number(e.amount),
-        quantity: e.quantity != null ? Number(e.quantity) : null,
-        unit:     e.unit || null,
-        type:     e.type === 'income' ? 'income' : 'expense',
-        category: e.category || 'General',
-      }));
+    const entries: ParsedVoiceEntry[] = rawEntries
+      .map((e: any): ParsedVoiceEntry | null => {
+        const amount = toSafeNumber(e.amount);
+        const category = normalizeCategory(e.category);
+        const isUdhaar = category === 'Udhaar';
+
+        // Valid:
+        // - normal financial entry: amount > 0
+        // - Udhaar entry: amount can be 0
+        if ((!Number.isFinite(amount)) || amount < 0) return null;
+        if (!isUdhaar && amount <= 0) return null;
+
+        const quantity =
+          e.quantity != null && e.quantity !== ''
+            ? toSafeNumber(e.quantity)
+            : null;
+
+        const normalizedQuantity =
+          quantity != null && Number.isFinite(quantity) && quantity > 0
+            ? quantity
+            : null;
+
+        const unit =
+          e.unit != null && String(e.unit).trim()
+            ? String(e.unit).trim().toLowerCase()
+            : null;
+
+        const customerName =
+          e.customer_name != null && String(e.customer_name).trim()
+            ? String(e.customer_name).trim()
+            : null;
+
+        return {
+          item: String(e.item || 'Voice Entry').trim(),
+          amount,
+          quantity: normalizedQuantity,
+          unit,
+          type: e.type === 'income' ? 'income' : 'expense',
+          category,
+          customer_name: customerName,
+        };
+      })
+      .filter((entry: ParsedVoiceEntry | null): entry is ParsedVoiceEntry => entry !== null);
 
     return {
       is_financial: parsed.is_financial !== false,
-      confidence:   parsed.confidence || 'medium',
+      confidence: normalizeConfidence(parsed.confidence),
       entries,
     };
   } catch (error) {
@@ -347,10 +450,10 @@ export const scanReceipt = async (
     const raw: string = data?.raw ?? '';
     const parsed = extractJson(raw);
     return {
-      amount:      parseFloat(parsed.amount) || 0,
+      amount: parseFloat(parsed.amount) || 0,
       description: parsed.description || 'Receipt scan',
-      category:    parsed.category || 'General',
-      date:        parsed.date || new Date().toISOString().split('T')[0],
+      category: parsed.category || 'General',
+      date: parsed.date || new Date().toISOString().split('T')[0],
     };
   } catch (err) {
     console.error('scanReceipt error:', err);
@@ -377,40 +480,51 @@ const filterByPeriod = (txs: any[], period: 'today' | 'week' | 'month' | 'year')
 const tryLocalAnswer = (question: string, transactions: any[]): string | null => {
   const q = question.toLowerCase().trim();
 
-  const isToday  = /today|aaj|innaiku|indu|இன்று|ఇవాళ|ಇಂದು|ഇന്ന്/.test(q);
-  const isWeek   = /week|hafte|vaaram|ebhara|வாரம்|వారం|ವಾರ|ആഴ്ച/.test(q);
-  const isMonth  = /month|mahine|madam|maasam|this month|மாதம்|నెల|ತಿಂಗಳು|മാസം/.test(q);
-  const isYear   = /year|saal|varudam|varsha|வருடம்|సంవత్సరం|ವರ್ಷ|വർഷം/.test(q);
-  const period: 'today'|'week'|'month'|'year' =
+  const isToday = /today|aaj|innaiku|indu|இன்று|ఇవాళ|ಇಂದು|ഇന്ന്/.test(q);
+  const isWeek = /week|hafte|vaaram|ebhara|வாரம்|వారం|ವಾರ|ആഴ്ച/.test(q);
+  const isMonth = /month|mahine|madam|maasam|this month|மாதம்|నెల|ತಿಂಗಳು|മാസം/.test(q);
+  const isYear = /year|saal|varudam|varsha|வருடம்|సంవత్సరం|ವರ್ಷ|വർഷം/.test(q);
+  const period: 'today' | 'week' | 'month' | 'year' =
     isToday ? 'today' : isWeek ? 'week' : isMonth ? 'month' : isYear ? 'year' : 'month';
   const label = isToday ? 'today' : isWeek ? 'this week' : isYear ? 'this year' : 'this month';
 
   const f = filterByPeriod(transactions, period);
-  const totalIn  = (txs: any[]) => txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+  const totalIn = (txs: any[]) => txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
   const totalOut = (txs: any[]) => txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
 
   if (/spend|spent|expense|kharcha|selavu|खर्च|செலவு|ఖర్చు|ಖರ್ಚು|ചെലവ്/.test(q)) {
     const amt = totalOut(f);
     return amt === 0 ? `No expenses recorded ${label}.` : `Your total expenses ${label} are ${fmt(amt)}.`;
   }
-  if (/income|earn|received|salary|sales|aaya|vandhuchu|वरुमानம்|వచ్చింది|ಆದಾಯ|വരുമാനം/.test(q)) {
+  if (/income|earn|received|salary|sales|aaya|vandhuchu|வருமானம்|వచ్చింది|ಆದಾಯ|വരുമാനം/.test(q)) {
     const amt = totalIn(f);
     return amt === 0 ? `No income recorded ${label}.` : `Your total income ${label} is ${fmt(amt)}.`;
   }
   if (/balance|net|profit|baaki|bakki|மீதி|నెట్|ಬ್ಯಾಲೆನ್ಸ್|ബാലൻസ്/.test(q)) {
-    const inc = totalIn(f); const exp = totalOut(f); const net = inc - exp;
+    const inc = totalIn(f);
+    const exp = totalOut(f);
+    const net = inc - exp;
     return `${label.charAt(0).toUpperCase() + label.slice(1)}: Income ${fmt(inc)}, Expenses ${fmt(exp)}, Net ${net >= 0 ? '+' : ''}${fmt(net)}.`;
   }
   if (/summary|report|total|pnl|p&l|saaransh|சுருக்கம்|సారాంశం|ಸಾರಾಂಶ|സംഗ്രഹം/.test(q)) {
-    const inc = totalIn(f); const exp = totalOut(f); const net = inc - exp;
+    const inc = totalIn(f);
+    const exp = totalOut(f);
+    const net = inc - exp;
     return `${label.charAt(0).toUpperCase() + label.slice(1)}: ${f.length} transactions, Income ${fmt(inc)}, Expenses ${fmt(exp)}, Net ${net >= 0 ? '+' : ''}${fmt(net)}.`;
   }
   if (/top|biggest|most|highest|largest/.test(q) && /expense|spend|category/.test(q)) {
     const expenses = f.filter(t => t.type === 'expense');
     if (!expenses.length) return `No expenses found ${label}.`;
     const byCategory: Record<string, number> = {};
-    expenses.forEach(t => { const c = t.category_label || 'General'; byCategory[c] = (byCategory[c] || 0) + Number(t.amount); });
-    const top3 = Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c, a]) => `${c} ${fmt(a)}`).join(', ');
+    expenses.forEach(t => {
+      const c = t.category_label || 'General';
+      byCategory[c] = (byCategory[c] || 0) + Number(t.amount);
+    });
+    const top3 = Object.entries(byCategory)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([c, a]) => `${c} ${fmt(a)}`)
+      .join(', ');
     return `Top expense categories ${label}: ${top3}.`;
   }
   if (/how many|count|number of|kitne|எத்தனை|ఎన్ని|ಎಷ್ಟು|എത്ര/.test(q)) {

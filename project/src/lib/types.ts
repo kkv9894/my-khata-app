@@ -1,4 +1,6 @@
-﻿export type SupportedLanguage = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml';
+﻿// FILE: src/lib/types.ts
+
+export type SupportedLanguage = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml';
 
 export type TransactionType = 'income' | 'expense';
 export type TransactionCategoryLabel =
@@ -14,6 +16,7 @@ export type TransactionCategoryLabel =
   | 'Utilities'
   | 'Entertainment'
   | 'Education'
+  | 'Udhaar'
   | 'General';
 
 export interface TransactionRecord {
@@ -28,6 +31,27 @@ export interface TransactionRecord {
   transaction_date: string | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+/**
+ * Parsed voice entry returned by AI/local parsing before DB save.
+ * This is intentionally separate from TransactionRecord because
+ * the parser carries extra fields like customer_name / quantity / unit.
+ */
+export interface ParsedVoiceEntry {
+  item: string;
+  amount: number;
+  quantity: number | null;
+  unit: string | null;
+  type: TransactionType;
+  category: TransactionCategoryLabel;
+  customer_name?: string | null;
+}
+
+export interface ParsedVoiceTransactionResult {
+  is_financial: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  entries: ParsedVoiceEntry[];
 }
 
 export type RoleKind = 'owner' | 'staff';
@@ -82,12 +106,19 @@ export interface PendingSaveResult {
   error?: string;
 }
 
-// Supabase inventory table row
+// ── Smart Inventory (Supabase-backed, business users only) ───────────────────
 export interface InventoryItem {
-  id:         string;
-  user_id:    string;
-  item_name:  string;
-  quantity:   number;
-  unit:       string;
+  id: string;
+  user_id: string;
+  item_name: string;
+  quantity: number;
+  unit: string; // 'kg' | 'packets' | 'pieces' | 'litres' | etc.
   updated_at: string;
 }
+
+// Inventory voice action returned by analyzeInventoryIntent()
+export type InventoryAction =
+  | { action: 'ADD_STOCK'; item: string; quantity: number; unit: string }
+  | { action: 'SELL_STOCK'; item: string; quantity: number; unit: string; amount: number }
+  | { action: 'CHECK_STOCK'; item: string }
+  | { action: 'NONE' };
