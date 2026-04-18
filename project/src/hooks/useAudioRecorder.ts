@@ -1,4 +1,4 @@
-// FILE: src/hooks/useAudioRecorder.ts
+﻿// FILE: src/hooks/useAudioRecorder.ts
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -264,36 +264,106 @@ export default function useAudioRecorder({
     try {
       setIsProcessing(true)
       setProcessingStep('Uploading audio...')
-      setProviderUsed('Gemini Audio STT')
+      setProviderUsed('Gemini API Route')
 
       const base64Audio = await blobToBase64(blob)
+      const mimeType = blob.type || pickMimeType()
+      let rawText = ''
 
-      setProcessingStep('Transcribing...')
-      const response = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'transcribe-audio',
-          payload: {
-            base64Audio,
-            mimeType: blob.type || pickMimeType(),
-            language: langRef.current,
-          },
-        }),
-      })
+      try {
+        setProcessingStep('Transcribing...')
+        const response = await fetch('/api/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'transcribe-audio',
+            payload: {
+              base64Audio,
+              mimeType,
+              language: langRef.current,
+            },
+          }),
+        })
 
-      if (response.status === 429) {
-        cbRef.current.onRateLimit?.()
-        throw new Error('AI rate limit reached. Please wait a moment and try again.')
+        if (response.status === 429) {
+          cbRef.current.onRateLimit?.()
+          throw new Error('AI rate limit reached. Please wait a moment and try again.')
+        }
+
+        const data = await response.json().catch(() => ({}) as { error?: string; text?: string })
+        if (!response.ok) {
+          throw new Error(data.error || `Transcription failed (${response.status})`)
+        }
+
+        rawText = data.text || ''
+      } catch (serverError) {
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
+        if (!apiKey) {
+          throw serverError
+        }
+
+        console.warn('[AudioRecorder] /api/gemini failed, falling back to direct Gemini:', serverError)
+        setProviderUsed('Gemini Direct')
+        setProcessingStep('Transcribing locally...')
+
+        const prompt = `Transcribe this audio exactly as spoken.
+
+Language may be ${langRef.current} mixed with English.
+Keep code-mixed words exactly as spoken.
+Write numbers as digits.
+Keep units exactly: kg, g, ml, l, packet, packets, piece, pieces.
+Do not explain anything.
+Do not translate anything.
+If speech is unclear or silent, return empty string.
+
+Return only the transcript text.`
+
+        const directResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  {
+                    inlineData: {
+                      data: base64Audio,
+                      mimeType,
+                    },
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0,
+              topP: 0.1,
+              topK: 1,
+            },
+          }),
+        })
+
+        if (directResponse.status === 429) {
+          cbRef.current.onRateLimit?.()
+          throw new Error('AI rate limit reached. Please wait a moment and try again.')
+        }
+
+        const directData = await directResponse.json().catch(() => ({}) as {
+          error?: { message?: string }
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+        })
+
+        if (!directResponse.ok) {
+          throw new Error(directData.error?.message || `Direct transcription failed (${directResponse.status})`)
+        }
+
+        rawText = (directData.candidates?.[0]?.content?.parts || [])
+          .map((part: { text?: string }) => part.text || '')
+          .join(' ')
+          .trim()
       }
 
-      const data = await response.json().catch(() => ({} as any))
-
-      if (!response.ok) {
-        throw new Error(data?.error || `Transcription failed (${response.status})`)
-      }
-
-      const text = normalizeTranscript(data?.text || '', langRef.current)
+      const text = normalizeTranscript(rawText, langRef.current)
       resetUi()
 
       if (!text) {
@@ -307,10 +377,10 @@ export default function useAudioRecorder({
 
       navigator.vibrate?.(confidence === 'high' ? 40 : [60, 40, 60])
       cbRef.current.onTranscript(text, confidence)
-    } catch (err: any) {
+    } catch (err) {
       console.error('[AudioRecorder] transcribe error:', err)
       resetUi()
-      cbRef.current.onError?.(err?.message || 'Audio transcription failed')
+      cbRef.current.onError?.(err instanceof Error ? err.message : 'Audio transcription failed')
     }
   }, [resetUi])
 
@@ -459,3 +529,4 @@ export default function useAudioRecorder({
     stopRecording,
   }
 }
+
