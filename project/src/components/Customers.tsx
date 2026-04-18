@@ -3,10 +3,9 @@
 // ✅ F2: Localized WhatsApp messages in all 6 languages
 // ✅ F5: Customer Voice Sign-Off — 3s audio clip for udhaar dispute resolution
 
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, X, MessageCircle, Trash2, ChevronDown, ChevronUp, Loader2, Users, IndianRupee, CheckCircle, Mic, MicOff, Square } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
 import { useRole } from '../contexts/RoleContext';
 
 type SupportedLanguage = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml'
@@ -34,8 +33,7 @@ interface UdhaarTx {
 }
 
 export default function Customers({ language = 'en' }: Props) {
-  const { user } = useAuth();
-  const { isOwner, shopName } = useRole();
+  const { effectiveUserId, isOwner, shopName } = useRole();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,16 +131,20 @@ export default function Customers({ language = 'en' }: Props) {
   };
 
   const loadCustomers = async () => {
-    if (!user) return;
+    if (!effectiveUserId) return;
     setLoading(true);
     const { data } = await supabase
       .from('udhaar_customers')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', effectiveUserId)
       .order('created_at', { ascending: false });
     setCustomers(data || []);
     setLoading(false);
   };
+
+  useEffect(() => {
+    void loadCustomers();
+  }, [effectiveUserId]);
 
   const loadHistory = async (customerId: string) => {
     if (txHistory[customerId]) return; // already loaded
@@ -165,11 +167,11 @@ export default function Customers({ language = 'en' }: Props) {
   };
 
   const addCustomer = async () => {
-    if (!newName.trim() || !user) return;
+    if (!newName.trim() || !effectiveUserId) return;
     setSaving(true);
     const { data, error } = await supabase
       .from('udhaar_customers')
-      .insert([{ user_id: user.id, name: newName.trim(), phone: newPhone.trim(), notes: newNotes.trim() }])
+      .insert([{ user_id: effectiveUserId, name: newName.trim(), phone: newPhone.trim(), notes: newNotes.trim() }])
       .select()
       .single();
     if (!error && data) {
@@ -182,7 +184,7 @@ export default function Customers({ language = 'en' }: Props) {
 
   const addTransaction = async (customer: Customer) => {
     const amount = parseFloat(txAmount);
-    if (!amount || !user) return;
+    if (!amount || !effectiveUserId) return;
     setTxSaving(true);
 
     // F5: Convert voice blob to base64 if recorded for this credit entry
@@ -194,7 +196,7 @@ export default function Customers({ language = 'en' }: Props) {
     // Insert udhaar transaction (with optional voice_promise_url for dispute resolution)
     const insertData: Record<string, any> = {
       customer_id: customer.id,
-      user_id: user.id,
+      user_id: effectiveUserId,
       type: txType,
       amount,
       note: txNote.trim(),

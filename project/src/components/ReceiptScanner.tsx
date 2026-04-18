@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { useRole } from '../contexts/RoleContext'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,9 +50,10 @@ export default function ReceiptScanner({
   onClose,
   onSaved,
   language: _language = 'en',
-  accountType = 'business',
+  accountType = 'personal',
 }: Props) {
   const { user } = useAuth()
+  const { effectiveUserId } = useRole()
 
   const [scanning,   setScanning]   = useState(false)
   const [preview,    setPreview]    = useState<string | null>(null)
@@ -122,7 +124,7 @@ export default function ReceiptScanner({
 
   // ── Save all items to transactions + update inventory (business) ─────────
   const saveAll = async () => {
-    if (!result || !user || items.length === 0) return
+    if (!result || !user || !effectiveUserId || items.length === 0) return
     setSaving(true); setError('')
     let count  = 0
     const errs: string[] = []
@@ -141,7 +143,7 @@ export default function ReceiptScanner({
         amount,
         description:      desc,
         type:             item.type,
-        user_id:          user.id,
+        user_id:          effectiveUserId,
         transaction_date: result.bill_date || now.split('T')[0],
         created_at:       now,
         voice_transcript: result.store_name
@@ -153,7 +155,7 @@ export default function ReceiptScanner({
         const msg = e1.message.toLowerCase()
         if (msg.includes('column') || msg.includes('does not exist') || msg.includes('schema')) {
           const { error: e2 } = await supabase.from('transactions').insert([{
-            amount, description: desc, type: item.type, user_id: user.id,
+            amount, description: desc, type: item.type, user_id: effectiveUserId,
             transaction_date: result.bill_date || now.split('T')[0],
             created_at: now,
           }])
@@ -170,7 +172,7 @@ export default function ReceiptScanner({
         try {
           const { data: existing } = await supabase
             .from('inventory').select('id, quantity')
-            .eq('user_id', user.id)
+            .eq('user_id', effectiveUserId)
             .ilike('item_name', item.item_name)
             .maybeSingle()
 
@@ -180,7 +182,7 @@ export default function ReceiptScanner({
               .update({ quantity: newQty, updated_at: now }).eq('id', existing.id)
           } else {
             await supabase.from('inventory').insert({
-              user_id: user.id, item_name: item.item_name,
+              user_id: effectiveUserId, item_name: item.item_name,
               quantity: item.quantity, unit: item.unit ?? 'units', updated_at: now,
             })
           }

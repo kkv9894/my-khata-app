@@ -1,102 +1,166 @@
-﻿// src/components/Settings.tsx
-// All settings features: profile edit, notifications toggle, CSV export,
-// AI copyright, app version, help & support, language, account type, sign out.
-// Uses onClick everywhere for reliable mobile taps.
-
-import { useState, useEffect } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
-  ChevronRight, X, Save, Loader2, Check,
-  User, Globe, Building2, LogOut, Download,
-  Bell, BellOff, Smartphone, HelpCircle,
-  Shield, Cpu, ChevronDown, ChevronUp,
+  Bell,
+  BellOff,
+  Building2,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Cpu,
+  Download,
+  Globe,
+  HelpCircle,
+  Loader2,
+  LogOut,
+  Save,
+  Shield,
+  Smartphone,
+  User,
+  X,
 } from 'lucide-react'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useRole } from '../contexts/RoleContext'
 import { getBrandName } from '../lib/brand'
 
 type Lang = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml'
+type AccountType = 'personal' | 'business'
 
 const LANGUAGES: { code: Lang; label: string; native: string }[] = [
-  { code: 'en', label: 'English',   native: 'English'  },
-  { code: 'hi', label: 'Hindi',     native: 'à¤¹à¤¿à¤‚à¤¦à¥€'      },
-  { code: 'ta', label: 'Tamil',     native: 'à®¤à®®à®¿à®´à¯'      },
-  { code: 'te', label: 'Telugu',    native: 'à°¤à±†à°²à±à°—à±'     },
-  { code: 'kn', label: 'Kannada',   native: 'à²•à²¨à³à²¨à²¡'      },
-  { code: 'ml', label: 'Malayalam', native: 'à´®à´²à´¯à´¾à´³à´‚'    },
+  { code: 'en', label: 'English', native: 'English' },
+  { code: 'hi', label: 'Hindi', native: 'Hindi' },
+  { code: 'ta', label: 'Tamil', native: 'Tamil' },
+  { code: 'te', label: 'Telugu', native: 'Telugu' },
+  { code: 'kn', label: 'Kannada', native: 'Kannada' },
+  { code: 'ml', label: 'Malayalam', native: 'Malayalam' },
 ]
 
 interface Props {
-  language:    Lang
+  language: Lang
   setLanguage: (l: Lang) => void
 }
 
-// â”€â”€â”€ Toast hook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback
+
 function useToast() {
   const [msg, setMsg] = useState('')
-  const show = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000) }
+  const show = (message: string) => {
+    setMsg(message)
+    window.setTimeout(() => setMsg(''), 3000)
+  }
   return { msg, show }
 }
 
-// â”€â”€â”€ Profile Edit Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function ProfileModal({ user, onClose, onSaved, accountType }: {
-  user: any; onClose: () => void; onSaved: () => void; accountType: 'personal' | 'business'
+function ProfileModal({
+  user,
+  onClose,
+  onSaved,
+  accountType,
+}: {
+  user: SupabaseUser | null
+  onClose: () => void
+  onSaved: () => void
+  accountType: AccountType
 }) {
-  const [name,   setName]   = useState<string>(user?.user_metadata?.full_name ?? '')
-  const [shop,   setShop]   = useState<string>(user?.user_metadata?.shop_name ?? '')
+  const [name, setName] = useState<string>(user?.user_metadata?.full_name ?? '')
+  const [shop, setShop] = useState<string>(user?.user_metadata?.shop_name ?? '')
   const [saving, setSaving] = useState(false)
-  const [err,    setErr]    = useState('')
+  const [err, setErr] = useState('')
 
   const save = async () => {
-    if (!name.trim()) { setErr('Name cannot be empty'); return }
-    setSaving(true); setErr('')
+    if (!name.trim()) {
+      setErr('Name cannot be empty')
+      return
+    }
+
+    setSaving(true)
+    setErr('')
+
     try {
-      const { error: authErr } = await supabase.auth.updateUser({
-        data: { full_name: name.trim(), shop_name: shop.trim() },
-      })
+      const payload = {
+        full_name: name.trim(),
+        shop_name: accountType === 'business' ? shop.trim() : '',
+      }
+
+      const { error: authErr } = await supabase.auth.updateUser({ data: payload })
       if (authErr) throw authErr
-      await supabase.from('profiles')
-        .update({ full_name: name.trim(), shop_name: shop.trim() })
-        .eq('id', user.id)
-      onSaved(); onClose()
-    } catch (e: any) {
-      setErr(e?.message ?? 'Save failed')
+
+      if (user?.id) {
+        await supabase.from('profiles').update(payload).eq('id', user.id)
+      }
+
+      onSaved()
+      onClose()
+    } catch (error: unknown) {
+      setErr(getErrorMessage(error, 'Save failed'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
-         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
+      onClick={event => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
       <div className="w-full max-w-lg rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-black">Edit Profile</h2>
-          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200">
+          <h2 className="text-lg font-black text-white">Edit Profile</h2>
+          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-navy-600">
             <X size={16} />
           </button>
         </div>
+
         <div className="space-y-3">
           <div>
-            <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Email (cannot be changed)</p>
-            <div className="rounded-2xl bg-navy-700 px-4 py-3 text-sm font-bold text-slate-400">{user?.email ?? 'â€”'}</div>
+            <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Email
+            </p>
+            <div className="rounded-2xl bg-navy-700 px-4 py-3 text-sm font-bold text-slate-400">
+              {user?.email ?? '-'}
+            </div>
           </div>
+
           <div>
-            <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Your Name</p>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter your name"
-              className="w-full rounded-2xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan" />
+            <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Your Name
+            </p>
+            <input
+              value={name}
+              onChange={event => setName(event.target.value)}
+              placeholder="Enter your name"
+              className="w-full rounded-2xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan"
+            />
           </div>
-          {/* Shop Name â€” Business only */}
+
           {accountType === 'business' && (
             <div>
-              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Shop / Business Name</p>
-              <input value={shop} onChange={e => setShop(e.target.value)} placeholder="Enter shop name"
-                className="w-full rounded-2xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan" />
+              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Shop or Business Name
+              </p>
+              <input
+                value={shop}
+                onChange={event => setShop(event.target.value)}
+                placeholder="Enter shop name"
+                className="w-full rounded-2xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan"
+              />
             </div>
           )}
-          {err && <p className="rounded-xl bg-red-900/30 px-3 py-2 text-xs font-bold text-red-400">{err}</p>}
-          <button onClick={() => void save()} disabled={saving}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan py-4 text-sm font-black text-navy-950 active:scale-95 transition-transform disabled:opacity-60">
+
+          {err && (
+            <p className="rounded-xl bg-red-900/30 px-3 py-2 text-xs font-bold text-red-400">{err}</p>
+          )}
+
+          <button
+            onClick={() => void save()}
+            disabled={saving}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan py-4 text-sm font-black text-navy-950 transition-transform active:scale-95 disabled:opacity-60"
+          >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
@@ -106,32 +170,39 @@ function ProfileModal({ user, onClose, onSaved, accountType }: {
   )
 }
 
-// â”€â”€â”€ App Version Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AppVersionModal({ onClose, brandName }: { onClose: () => void; brandName: string }) {
   const rows = [
-    ['App Name',     brandName],
-    ['Version',      '1.0.0'],
-    ['Build',        '2026.03'],
-    ['Platform',     'Progressive Web App (PWA)'],
-    ['Database',     'Supabase (PostgreSQL)'],
-    ['Hosted on',    'Vercel Edge Network'],
-    ['Voice AI',     'Sarvam AI Â· Google STT Â· ElevenLabs'],
-    ['Language AI',  'Google Gemini 1.5 Pro'],
-    ['Developer',    `Â© 2026 ${brandName}`],
+    ['App Name', brandName],
+    ['Version', '1.0.0'],
+    ['Build', '2026.03'],
+    ['Platform', 'Progressive Web App (PWA)'],
+    ['Database', 'Supabase (PostgreSQL)'],
+    ['Hosted on', 'Vercel Edge Network'],
+    ['Voice AI', 'Sarvam AI · Google STT · ElevenLabs'],
+    ['Language AI', 'Google Gemini 1.5 Pro'],
+    ['Developer', `Copyright 2026 ${brandName}`],
   ]
+
   return (
-    <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
-         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
+      onClick={event => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
       <div className="w-full max-w-lg rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-black">App Info</h2>
-          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200"><X size={16} /></button>
+          <h2 className="text-lg font-black text-white">App Info</h2>
+          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-navy-600">
+            <X size={16} />
+          </button>
         </div>
+
         <div className="space-y-2">
           {rows.map(([label, value]) => (
             <div key={label} className="flex items-center justify-between rounded-2xl bg-navy-900 px-4 py-3">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</span>
-              <span className="text-sm font-bold text-white text-right max-w-[55%]">{value}</span>
+              <span className="max-w-[55%] text-right text-sm font-bold text-white">{value}</span>
             </div>
           ))}
         </div>
@@ -140,111 +211,148 @@ function AppVersionModal({ onClose, brandName }: { onClose: () => void; brandNam
   )
 }
 
-// â”€â”€â”€ Help & Support Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const FAQ_ITEMS = [
-  { q: 'How do I add a transaction?',      a: 'Hold the mic button and speak. Say "rice 50 bought" or "customer paid 200". The AI saves it automatically.' },
-  { q: 'Why is my voice not working?',     a: 'Allow microphone permission in your browser. On mobile Chrome: Settings â†’ Site Settings â†’ Microphone â†’ Allow.' },
-  { q: 'What languages are supported?',   a: 'English, Hindi, Tamil, Telugu, Kannada, Malayalam. Mixed dialects like Tanglish and Hinglish also work.' },
-  { q: 'How does Inventory work?',         a: 'Say "Added 50 kg sugar" to increase stock. Say "Sold 2 kg sugar for 100" to decrease. Ask "How much sugar is left?" to check.' },
-  { q: 'How do I export my data?',         a: 'Settings â†’ Export Ledger to CSV. Your full transaction history downloads as a spreadsheet.' },
-  { q: 'What is Udhaar (credit)?',         a: 'Track money owed by customers. Go to the Udhaar tab, add a customer, and record how much they owe.' },
-  { q: 'Is my data secure?',              a: 'Yes. All data is stored in Supabase with Row Level Security â€” only you can see your transactions. We never sell your data.' },
+  {
+    q: 'How do I add a transaction?',
+    a: 'Tap the mic and speak. Say things like "rice 50 bought" or "salary 2000 received". Voice is the main input of the app.',
+  },
+  {
+    q: 'Why is my voice not working?',
+    a: 'Allow microphone permission in your browser. On mobile Chrome, open site settings and enable microphone access for this app.',
+  },
+  {
+    q: 'What languages are supported?',
+    a: 'English, Hindi, Tamil, Telugu, Kannada, and Malayalam are supported, including mixed speech patterns like Hinglish and Tanglish.',
+  },
+  {
+    q: 'Can personal users use this app?',
+    a: 'Yes. Personal mode is for daily income, expense, and savings tracking. Business mode adds shop tools like inventory, staff, and deeper insights.',
+  },
+  {
+    q: 'How do I export my data?',
+    a: 'Open Settings and tap "Download Ledger as CSV". Your transaction history downloads as a spreadsheet.',
+  },
 ]
 
 function HelpModal({ onClose }: { onClose: () => void }) {
   const [open, setOpen] = useState<number | null>(null)
+
   return (
-    <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
-         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="w-full max-w-lg rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl max-h-[85vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
+      onClick={event => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-black">Help & Support</h2>
-          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200"><X size={16} /></button>
+          <h2 className="text-lg font-black text-white">Help and Support</h2>
+          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-navy-600">
+            <X size={16} />
+          </button>
         </div>
-        <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Frequently Asked Questions</p>
+
+        <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+          Frequently Asked Questions
+        </p>
+
         <div className="space-y-2">
-          {FAQ_ITEMS.map((item, i) => (
-            <div key={i} className="rounded-2xl border border-navy-600 overflow-hidden">
-              <button onClick={() => setOpen(open === i ? null : i)}
-                className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-navy-900">
-                <span className="text-sm font-bold text-white pr-3">{item.q}</span>
-                {open === i ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
+          {FAQ_ITEMS.map((item, index) => (
+            <div key={item.q} className="overflow-hidden rounded-2xl border border-navy-600">
+              <button
+                onClick={() => setOpen(open === index ? null : index)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-navy-900"
+              >
+                <span className="pr-3 text-sm font-bold text-white">{item.q}</span>
+                {open === index ? (
+                  <ChevronUp size={16} className="shrink-0 text-slate-400" />
+                ) : (
+                  <ChevronDown size={16} className="shrink-0 text-slate-400" />
+                )}
               </button>
-              {open === i && (
-                <div className="px-4 pb-4 pt-1 border-t border-gray-50">
-                  <p className="text-sm text-slate-400 leading-relaxed">{item.a}</p>
+
+              {open === index && (
+                <div className="border-t border-navy-600 px-4 pb-4 pt-2">
+                  <p className="text-sm leading-relaxed text-slate-400">{item.a}</p>
                 </div>
               )}
             </div>
           ))}
         </div>
+
         <div className="mt-6 rounded-2xl bg-black p-4 text-center">
-          <p className="text-xs text-white/60 mb-1">Still need help?</p>
-          <a href="mailto:support@mykhata.app" className="text-sm font-black text-white">support@mykhata.app</a>
+          <p className="mb-1 text-xs text-white/60">Still need help?</p>
+          <a href="mailto:support@mykhata.app" className="text-sm font-black text-white">
+            support@mykhata.app
+          </a>
         </div>
       </div>
     </div>
   )
 }
 
-// â”€â”€â”€ AI Copyright Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const AI_ITEMS = [
   {
     title: 'Language AI',
-    name:  'Google Gemini 1.5 Pro',
-    desc:  'Powers voice-to-transaction parsing, Smart Clerk queries, receipt scanning, and business insights.',
-    copy:  'Â© Google LLC. Used under Google AI API Terms of Service.',
+    name: 'Google Gemini 1.5 Pro',
+    desc: 'Used for voice-to-transaction parsing, assistant answers, receipt scanning, and insights.',
+    copy: 'Google AI APIs are used under their published terms.',
   },
   {
-    title: 'Voice Recognition (Primary)',
-    name:  'Sarvam AI',
-    desc:  'Indian-language Speech-to-Text. Optimised for Hindi, Tamil, Telugu, Kannada, Malayalam and mixed dialects like Tanglish and Hinglish.',
-    copy:  'Â© Sarvam AI. Used under Sarvam API Terms of Service.',
+    title: 'Voice Recognition',
+    name: 'Sarvam AI and Google STT',
+    desc: 'Used to turn spoken input into text. Voice is the core interaction layer of the app.',
+    copy: 'Voice services are used through official APIs.',
   },
   {
-    title: 'Voice Recognition (Fallback)',
-    name:  'Google Cloud Speech-to-Text (Chirp)',
-    desc:  'Fallback STT provider for broad language and accent coverage.',
-    copy:  'Â© Google LLC. Used under Google Cloud Terms of Service.',
+    title: 'Text to Speech',
+    name: 'ElevenLabs and Web Speech API',
+    desc: 'Used for spoken confirmations and alerts so users can stay hands-free.',
+    copy: 'Speech services are used under their respective platform terms.',
   },
   {
-    title: 'Text-to-Speech (Soundbox)',
-    name:  'ElevenLabs Â· Web Speech API',
-    desc:  'Speaks transaction confirmations and low-stock alerts aloud.',
-    copy:  'Â© ElevenLabs Inc. Used under ElevenLabs API Terms of Service.',
-  },
-  {
-    title: 'Database & Auth',
-    name:  'Supabase',
-    desc:  'All transaction data, inventory, and user profiles are stored in Supabase (PostgreSQL). Row Level Security ensures only you can access your data.',
-    copy:  'Â© Supabase Inc. Used under Supabase Terms of Service.',
+    title: 'Database and Auth',
+    name: 'Supabase',
+    desc: 'Stores transactions, profile data, and account access securely with row-level security.',
+    copy: 'Supabase is used under its published terms.',
   },
 ]
 
 function AiCopyrightModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
-         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="w-full max-w-lg rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl max-h-[85vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
+      onClick={event => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-black">AI & Attributions</h2>
-          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200"><X size={16} /></button>
+          <h2 className="text-lg font-black text-white">AI and Attributions</h2>
+          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-navy-600">
+            <X size={16} />
+          </button>
         </div>
+
         <div className="space-y-3">
           {AI_ITEMS.map(item => (
             <div key={item.title} className="rounded-2xl bg-navy-900 p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{item.title}</p>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                {item.title}
+              </p>
               <p className="text-sm font-black text-white">{item.name}</p>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{item.desc}</p>
-              <p className="text-[10px] text-slate-400 mt-2">{item.copy}</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">{item.desc}</p>
+              <p className="mt-2 text-[10px] text-slate-500">{item.copy}</p>
             </div>
           ))}
-          <div className="rounded-2xl border border-gray-200 p-4 text-center">
-            <p className="text-xs text-slate-400 leading-relaxed">
-              ZivaKhata is an independent product. All third-party AI services are used via official APIs under their respective terms. User data is never sold or shared.
+
+          <div className="rounded-2xl border border-navy-600 p-4 text-center">
+            <p className="text-xs leading-relaxed text-slate-400">
+              ZivaKhata is an independent product. Third-party AI services are used through official APIs,
+              and user data is not sold.
             </p>
             <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-              Â© 2026 ZivaKhata Â· All rights reserved
+              Copyright 2026 ZivaKhata
             </p>
           </div>
         </div>
@@ -253,7 +361,6 @@ function AiCopyrightModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-// â”€â”€â”€ CSV Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function exportCSV(userId: string): Promise<string | null> {
   try {
     const { data, error } = await supabase
@@ -262,303 +369,413 @@ async function exportCSV(userId: string): Promise<string | null> {
       .eq('user_id', userId)
       .order('transaction_date', { ascending: false })
       .limit(5000)
+
     if (error) throw error
     if (!data || data.length === 0) return 'No transactions found to export.'
-    const header = 'Date,Type,Amount (â‚¹),Description,Category\n'
-    const rows   = data.map(r =>
-      `"${r.transaction_date ?? ''}","${r.type}","${r.amount}","${String(r.description ?? '').replace(/"/g, '""')}","${r.category_label ?? 'General'}"`
-    ).join('\n')
+
+    const header = 'Date,Type,Amount (INR),Description,Category\n'
+    const rows = data
+      .map(row =>
+        `"${row.transaction_date ?? ''}","${row.type}","${row.amount}","${String(row.description ?? '').replace(/"/g, '""')}","${row.category_label ?? 'General'}"`
+      )
+      .join('\n')
+
     const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' })
-    const a    = document.createElement('a')
-    a.href     = URL.createObjectURL(blob)
-    a.download = `my-khata-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
+    const anchor = document.createElement('a')
+    anchor.href = URL.createObjectURL(blob)
+    anchor.download = `my-khata-${new Date().toISOString().split('T')[0]}.csv`
+    anchor.click()
+
     return null
-  } catch (e: any) { return e?.message ?? 'Export failed' }
+  } catch (error: unknown) {
+    return getErrorMessage(error, 'Export failed')
+  }
 }
 
-// â”€â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Settings({ language, setLanguage }: Props) {
   const { user, signOut } = useAuth()
-  const { shopName }      = useRole()
+  const { shopName } = useRole()
   const { msg: toast, show: showToast } = useToast()
-
-  // â”€â”€ Derived brand name â€” updates live when language changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const brandName = getBrandName(language)
 
-  const [modal,      setModal]      = useState<'profile' | 'version' | 'help' | 'ai' | null>(null)
-  const [langOpen,   setLangOpen]   = useState(false)
-  const [typeOpen,   setTypeOpen]   = useState(false)
-  const [exporting,  setExporting]  = useState(false)
+  const [modal, setModal] = useState<'profile' | 'version' | 'help' | 'ai' | null>(null)
+  const [langOpen, setLangOpen] = useState(false)
+  const [typeOpen, setTypeOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
-  const [notifOn,    setNotifOn]    = useState(() => localStorage.getItem('khata_notif') !== 'off')
+  const [notifOn, setNotifOn] = useState(() => localStorage.getItem('khata_notif') !== 'off')
 
-  useEffect(() => { localStorage.setItem('khata_notif', notifOn ? 'on' : 'off') }, [notifOn])
+  useEffect(() => {
+    localStorage.setItem('khata_notif', notifOn ? 'on' : 'off')
+  }, [notifOn])
 
-  const accountType = (user?.user_metadata?.account_type ?? 'business') as 'personal' | 'business'
+  const accountType = (user?.user_metadata?.account_type ?? 'personal') as AccountType
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
-  const uid         = user?.id ?? ''
-  const maskedUid   = uid.length > 8 ? `${uid.slice(0, 4)}...${uid.slice(-4)}` : uid
-  const currentLang = LANGUAGES.find(l => l.code === language) ?? LANGUAGES[0]
+  const uid = user?.id ?? ''
+  const maskedUid = uid.length > 8 ? `${uid.slice(0, 4)}...${uid.slice(-4)}` : uid
+  const currentLang = LANGUAGES.find(item => item.code === language) ?? LANGUAGES[0]
 
-  const handleAccountType = async (type: 'personal' | 'business') => {
+  const handleAccountType = async (type: AccountType) => {
     setTypeOpen(false)
     if (type === accountType) return
-    const { error } = await supabase.auth.updateUser({ data: { account_type: type } })
-    if (error) { showToast('Failed to update'); return }
-    showToast(`Switched to ${type === 'business' ? 'Business ðŸª' : 'Personal ðŸ‘¤'}`)
-    setTimeout(() => window.location.reload(), 1000)
+
+    const updates = {
+      account_type: type,
+      shop_name: type === 'business' ? user?.user_metadata?.shop_name ?? '' : '',
+    }
+
+    const { error: authError } = await supabase.auth.updateUser({ data: updates })
+    if (authError) {
+      showToast('Failed to update account type')
+      return
+    }
+
+    if (user?.id) {
+      await supabase
+        .from('profiles')
+        .update({
+          shop_name: type === 'business' ? user?.user_metadata?.shop_name ?? '' : '',
+        })
+        .eq('id', user.id)
+    }
+
+    showToast(`Switched to ${type === 'business' ? 'Business' : 'Personal'}`)
+    window.setTimeout(() => window.location.reload(), 800)
   }
 
   const handleExport = async () => {
     setExporting(true)
-    const err = await exportCSV(user?.id ?? '')
+    const error = await exportCSV(user?.id ?? '')
     setExporting(false)
-    showToast(err ?? 'âœ… Ledger exported!')
+    showToast(error ?? 'Ledger exported')
   }
 
   return (
-    <div className="flex flex-col pb-32 bg-navy-900 min-h-full">
-
-      {/* Toast */}
+    <div className="flex min-h-full flex-col bg-navy-900 pb-32">
       {toast && (
-        <div className="fixed top-20 left-4 right-4 z-[400] rounded-2xl bg-gray-900 px-4 py-3 text-center text-sm font-bold text-white shadow-2xl pointer-events-none">
+        <div className="pointer-events-none fixed left-4 right-4 top-20 z-[400] rounded-2xl bg-gray-900 px-4 py-3 text-center text-sm font-bold text-white shadow-2xl">
           {toast}
         </div>
       )}
 
-      {/* Modals */}
-      {modal === 'profile' && <ProfileModal user={user} accountType={accountType} onClose={() => setModal(null)} onSaved={() => showToast('âœ… Profile saved!')} />}
+      {modal === 'profile' && (
+        <ProfileModal
+          user={user}
+          accountType={accountType}
+          onClose={() => setModal(null)}
+          onSaved={() => showToast('Profile saved')}
+        />
+      )}
       {modal === 'version' && <AppVersionModal onClose={() => setModal(null)} brandName={brandName} />}
-      {modal === 'help'    && <HelpModal onClose={() => setModal(null)} />}
-      {modal === 'ai'      && <AiCopyrightModal onClose={() => setModal(null)} />}
+      {modal === 'help' && <HelpModal onClose={() => setModal(null)} />}
+      {modal === 'ai' && <AiCopyrightModal onClose={() => setModal(null)} />}
 
-      {/* â”€â”€ Profile card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <button
         onClick={() => setModal('profile')}
-        className="mx-4 mt-4 rounded-3xl bg-black p-5 text-white shadow-2xl active:scale-[0.98] transition-transform text-left"
+        className="mx-4 mt-4 rounded-3xl bg-black p-5 text-left text-white shadow-2xl transition-transform active:scale-[0.98]"
       >
-        {/* Brand badge inside card */}
         <div className="mb-3 flex items-center gap-1.5">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">âœ¨ {brandName}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">{brandName}</span>
         </div>
+
         <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-navy-800/15 text-2xl font-black shrink-0">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-navy-800/15 text-2xl font-black">
             {displayName.charAt(0).toUpperCase()}
           </div>
+
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-black">{displayName}</p>
             <p className="truncate text-[11px] text-white/50">{user?.email}</p>
             <div className="mt-1 flex items-center gap-2">
               <span className="rounded-full bg-navy-800/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-white/60">
-                {accountType === 'business' ? 'ðŸª Business' : 'ðŸ‘¤ Personal'}
+                {accountType === 'business' ? 'Business' : 'Personal'}
               </span>
-              <span className="text-[9px] text-white/30 font-mono">ID: {maskedUid}</span>
+              <span className="font-mono text-[9px] text-white/30">ID: {maskedUid}</span>
             </div>
           </div>
-          <ChevronRight size={16} className="text-white/30 shrink-0" />
+
+          <ChevronRight size={16} className="shrink-0 text-white/30" />
         </div>
-        <div className="mt-3 border-t border-white/10 pt-3 flex items-center justify-between">
+
+        <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3">
           {accountType === 'business' ? (
             <>
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-white/30">Shop</p>
-                <p className="text-sm font-black text-white/80">{shopName}</p>
+                <p className="text-sm font-black text-white/80">{shopName || 'Tap to add a shop name'}</p>
               </div>
-              <p className="text-[10px] text-white/30">Tap to edit â†’</p>
+              <p className="text-[10px] text-white/30">Tap to edit</p>
             </>
           ) : (
-            <p className="text-[10px] text-white/30 w-full text-right">Tap to edit profile â†’</p>
+            <p className="w-full text-right text-[10px] text-white/30">
+              Personal ledger with voice-first tracking
+            </p>
           )}
         </div>
       </button>
 
-      {/* â”€â”€ Preferences â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Preferences">
-        <button onClick={() => { setLangOpen(v => !v); setTypeOpen(false) }}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
-          <Ico bg="bg-blue-50"><Globe size={16} className="text-blue-500" /></Ico>
+        <button
+          onClick={() => {
+            setLangOpen(value => !value)
+            setTypeOpen(false)
+          }}
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-navy-900"
+        >
+          <Ico bg="bg-blue-50">
+            <Globe size={16} className="text-blue-500" />
+          </Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">Language</span>
-          <span className="text-xs font-bold text-slate-400 mr-1">{currentLang.native}</span>
+          <span className="mr-1 text-xs font-bold text-slate-400">{currentLang.native}</span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
+
         {langOpen && (
-          <div className="border-t border-gray-50 bg-navy-900 px-4 py-2">
-            {LANGUAGES.map(l => (
-              <button key={l.code} onClick={() => { setLanguage(l.code); setLangOpen(false); showToast(`Language: ${l.label}`) }}
-                className="flex w-full items-center justify-between rounded-xl px-3 py-3 active:bg-navy-800">
+          <div className="border-t border-navy-700 bg-navy-900 px-4 py-2">
+            {LANGUAGES.map(item => (
+              <button
+                key={item.code}
+                onClick={() => {
+                  setLanguage(item.code)
+                  setLangOpen(false)
+                  showToast(`Language: ${item.label}`)
+                }}
+                className="flex w-full items-center justify-between rounded-xl px-3 py-3 active:bg-navy-800"
+              >
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-black text-white">{l.native}</span>
-                  <span className="text-xs text-slate-400">{l.label}</span>
+                  <span className="text-sm font-black text-white">{item.native}</span>
+                  <span className="text-xs text-slate-400">{item.label}</span>
                 </div>
-                {language === l.code && <Check size={14} className="text-black" />}
+                {language === item.code && <Check size={14} className="text-cyan" />}
               </button>
             ))}
           </div>
         )}
+
         <Div />
-        {/* â”€â”€ Account Type â€” locked for Business, upgradeable for Personal â”€â”€ */}
-        {accountType === 'business' ? (
-          /* Business users: read-only, cannot downgrade */
-          <div className="flex w-full items-center gap-4 px-4 py-4 opacity-80">
-            <Ico bg="bg-purple-50"><Building2 size={16} className="text-purple-500" /></Ico>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-white">Account Type</p>
-              <p className="text-[10px] text-slate-400">Business accounts cannot be downgraded</p>
-            </div>
-            <span className="rounded-full bg-purple-900/40 border border-purple-600/40 px-2.5 py-1 text-[10px] font-black text-purple-300">
-              ðŸª Business
-            </span>
+
+        <button
+          onClick={() => {
+            setTypeOpen(value => !value)
+            setLangOpen(false)
+          }}
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-navy-900"
+        >
+          <Ico bg="bg-purple-50">
+            <Building2 size={16} className="text-purple-500" />
+          </Ico>
+          <div className="flex-1 text-left">
+            <p className="text-sm font-bold text-white">Account Type</p>
+            <p className="text-[10px] text-slate-400">
+              Personal for everyday finance. Business for shop tools.
+            </p>
           </div>
-        ) : (
-          /* Personal users: can upgrade to Business */
-          <>
-            <button onClick={() => { setTypeOpen(v => !v); setLangOpen(false) }}
-              className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
-              <Ico bg="bg-purple-50"><Building2 size={16} className="text-purple-500" /></Ico>
-              <span className="flex-1 text-left text-sm font-bold text-white">Account Type</span>
-              <span className="text-xs font-bold text-slate-400 mr-1">Personal</span>
-              {typeOpen ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-            </button>
-            {typeOpen && (
-              <div className="border-t border-navy-700 bg-navy-900 px-4 py-2">
-                <p className="mb-1 px-3 text-[9px] font-black uppercase tracking-widest text-orange-400">
-                  âš  Upgrading to Business reloads the app
-                </p>
-                <button onClick={() => void handleAccountType('business')}
-                  className="flex w-full items-center justify-between rounded-xl px-3 py-3 active:bg-navy-800">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">ðŸª</span>
-                    <div className="text-left">
-                      <p className="text-sm font-black text-white">Upgrade to Business</p>
-                      <p className="text-[10px] text-slate-400">Unlock Inventory, Staff & Insights</p>
-                    </div>
-                  </div>
-                  <ChevronRight size={14} className="text-slate-500" />
-                </button>
+          <span className="mr-1 text-xs font-bold text-slate-400">
+            {accountType === 'business' ? 'Business' : 'Personal'}
+          </span>
+          {typeOpen ? (
+            <ChevronUp size={14} className="text-slate-500" />
+          ) : (
+            <ChevronDown size={14} className="text-slate-500" />
+          )}
+        </button>
+
+        {typeOpen && (
+          <div className="border-t border-navy-700 bg-navy-900 px-4 py-2">
+            <button
+              onClick={() => void handleAccountType('personal')}
+              className={`mb-2 flex w-full items-center justify-between rounded-xl px-3 py-3 text-left active:bg-navy-800 ${
+                accountType === 'personal' ? 'bg-navy-800' : ''
+              }`}
+            >
+              <div>
+                <p className="text-sm font-black text-white">Personal</p>
+                <p className="text-[10px] text-slate-400">Voice ledger for daily income, expense, and savings</p>
               </div>
-            )}
-          </>
+              {accountType === 'personal' && <Check size={14} className="text-cyan" />}
+            </button>
+
+            <button
+              onClick={() => void handleAccountType('business')}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-left active:bg-navy-800 ${
+                accountType === 'business' ? 'bg-navy-800' : ''
+              }`}
+            >
+              <div>
+                <p className="text-sm font-black text-white">Business</p>
+                <p className="text-[10px] text-slate-400">Adds inventory, staff, reports, and business insights</p>
+              </div>
+              {accountType === 'business' && <Check size={14} className="text-cyan" />}
+            </button>
+          </div>
         )}
       </Section>
 
-      {/* â”€â”€ Notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Notifications">
         <div className="flex w-full items-center justify-between gap-3 px-4 py-4">
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
             <Ico bg={notifOn ? 'bg-orange-50' : 'bg-navy-700'}>
-              {notifOn ? <Bell size={16} className="text-orange-500" /> : <BellOff size={16} className="text-slate-400" />}
+              {notifOn ? (
+                <Bell size={16} className="text-orange-500" />
+              ) : (
+                <BellOff size={16} className="text-slate-400" />
+              )}
             </Ico>
+
             <div className="min-w-0">
               <p className="text-sm font-bold text-white">Push Notifications</p>
-              <p className="text-[10px] text-slate-400 truncate">
-                {notifOn ? 'Low stock & daily summary on' : 'All notifications off'}
+              <p className="truncate text-[10px] text-slate-400">
+                {notifOn ? 'Low stock and daily summary on' : 'All notifications off'}
               </p>
             </div>
           </div>
-          {/* Toggle â€” shrink-0 prevents it from being squeezed */}
+
           <button
-            onClick={() => { setNotifOn(v => !v); showToast(notifOn ? 'ðŸ”• Notifications off' : 'ðŸ”” Notifications on') }}
+            onClick={() => {
+              setNotifOn(value => !value)
+              showToast(notifOn ? 'Notifications off' : 'Notifications on')
+            }}
             className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${notifOn ? 'bg-cyan' : 'bg-navy-600'}`}
           >
-            <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${notifOn ? 'translate-x-5' : 'translate-x-1'}`} />
+            <span
+              className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${notifOn ? 'translate-x-5' : 'translate-x-1'}`}
+            />
           </button>
         </div>
       </Section>
 
-      {/* â”€â”€ Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Data">
-        <button onClick={() => !exporting && void handleExport()}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
+        <button
+          onClick={() => !exporting && void handleExport()}
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-navy-900"
+        >
           <Ico bg="bg-green-50">
-            {exporting ? <Loader2 size={16} className="animate-spin text-green-500" /> : <Download size={16} className="text-green-500" />}
+            {exporting ? (
+              <Loader2 size={16} className="animate-spin text-green-500" />
+            ) : (
+              <Download size={16} className="text-green-500" />
+            )}
           </Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">
-            {exporting ? 'Exportingâ€¦' : 'Download Ledger as CSV'}
+            {exporting ? 'Exporting...' : 'Download Ledger as CSV'}
           </span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
       </Section>
 
-      {/* â”€â”€ About â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="About">
-        <button onClick={() => setModal('version')}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
-          <Ico bg="bg-navy-700"><Smartphone size={16} className="text-slate-400" /></Ico>
+        <button
+          onClick={() => setModal('version')}
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-navy-900"
+        >
+          <Ico bg="bg-navy-700">
+            <Smartphone size={16} className="text-slate-400" />
+          </Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">App Version</span>
-          <span className="text-xs font-bold text-slate-400 mr-1">1.0.0</span>
+          <span className="mr-1 text-xs font-bold text-slate-400">1.0.0</span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
+
         <Div />
-        <button onClick={() => setModal('help')}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
-          <Ico bg="bg-blue-50"><HelpCircle size={16} className="text-blue-500" /></Ico>
-          <span className="flex-1 text-left text-sm font-bold text-white">Help & Support</span>
+
+        <button
+          onClick={() => setModal('help')}
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-navy-900"
+        >
+          <Ico bg="bg-blue-50">
+            <HelpCircle size={16} className="text-blue-500" />
+          </Ico>
+          <span className="flex-1 text-left text-sm font-bold text-white">Help and Support</span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
+
         <Div />
-        <button onClick={() => setModal('ai')}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
-          <Ico bg="bg-indigo-50"><Cpu size={16} className="text-indigo-500" /></Ico>
-          <span className="flex-1 text-left text-sm font-bold text-white">AI & Attributions</span>
+
+        <button
+          onClick={() => setModal('ai')}
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-navy-900"
+        >
+          <Ico bg="bg-indigo-50">
+            <Cpu size={16} className="text-indigo-500" />
+          </Ico>
+          <span className="flex-1 text-left text-sm font-bold text-white">AI and Attributions</span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
+
         <Div />
-        <button onClick={() => window.open('mailto:support@mykhata.app?subject=Privacy', '_blank')}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
-          <Ico bg="bg-green-50"><Shield size={16} className="text-green-500" /></Ico>
+
+        <button
+          onClick={() => window.open('mailto:support@mykhata.app?subject=Privacy', '_blank')}
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-navy-900"
+        >
+          <Ico bg="bg-green-50">
+            <Shield size={16} className="text-green-500" />
+          </Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">Privacy Policy</span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
       </Section>
 
-      {/* â”€â”€ Account â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Account">
-        <button onClick={() => setModal('profile')}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
-          <Ico bg="bg-indigo-50"><User size={16} className="text-indigo-500" /></Ico>
+        <button
+          onClick={() => setModal('profile')}
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-navy-900"
+        >
+          <Ico bg="bg-indigo-50">
+            <User size={16} className="text-indigo-500" />
+          </Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">Edit Profile</span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
       </Section>
 
-      {/* â”€â”€ Sign Out â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Session">
         <button
-          onClick={() => { if (!signingOut) { setSigningOut(true); void signOut() } }}
+          onClick={() => {
+            if (!signingOut) {
+              setSigningOut(true)
+              void signOut()
+            }
+          }}
           disabled={signingOut}
-          className="flex w-full items-center gap-4 px-4 py-4 active:bg-red-950 transition-colors disabled:opacity-50"
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-red-950 disabled:opacity-50"
         >
           <Ico bg="bg-red-950">
-            {signingOut ? <Loader2 size={16} className="animate-spin text-red-400" /> : <LogOut size={16} className="text-red-500" />}
+            {signingOut ? (
+              <Loader2 size={16} className="animate-spin text-red-400" />
+            ) : (
+              <LogOut size={16} className="text-red-500" />
+            )}
           </Ico>
           <span className="flex-1 text-left text-sm font-black text-red-400">
-            {signingOut ? 'Signing outâ€¦' : 'Sign Out'}
+            {signingOut ? 'Signing out...' : 'Sign Out'}
           </span>
         </button>
       </Section>
 
-      {/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="mt-8 px-4 pb-4 text-center">
         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-          v1.0.0 Â· Â© 2026 {brandName}
+          v1.0.0 · Copyright 2026 {brandName}
         </p>
-        <p className="mt-1 text-[9px] text-navy-600">All rights reserved Â· Powered by Ziva AI</p>
+        <p className="mt-1 text-[9px] text-navy-600">Voice-first ledger for personal and business users</p>
       </div>
     </div>
   )
 }
 
-// â”€â”€â”€ Layout helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
       <p className="mx-6 mb-2 mt-6 text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-      <div className="mx-4 overflow-hidden rounded-3xl bg-navy-800 shadow-sm border border-navy-600">{children}</div>
+      <div className="mx-4 overflow-hidden rounded-3xl border border-navy-600 bg-navy-800 shadow-sm">{children}</div>
     </>
   )
 }
-function Div() { return <div className="h-px bg-navy-900 mx-4" /> }
-function Ico({ bg, children }: { bg: string; children: React.ReactNode }) {
+
+function Div() {
+  return <div className="mx-4 h-px bg-navy-900" />
+}
+
+function Ico({ bg, children }: { bg: string; children: ReactNode }) {
   return <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${bg}`}>{children}</div>
 }

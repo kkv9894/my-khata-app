@@ -213,7 +213,7 @@ export default function Auth({ language: _language = 'en' }: { language?: Suppor
 
         <div className="space-y-3">
           {mode === 'signup' && (
-            <FloatingInput id="name" label="Your Name / Shop Name"
+            <FloatingInput id="name" label="Your Name"
               type="text" value={name} onChange={setName} />
           )}
           <FloatingInput id="email" label="Email Address"

@@ -871,8 +871,9 @@ const UI: Record<SupportedLanguage, {
 }
 export default function Home({ language = 'en', setLanguage }: { language?: SupportedLanguage; setLanguage?: (l: SupportedLanguage) => void }) {
   const { user }   = useAuth()
-  const accountType = (user?.user_metadata?.account_type ?? 'business') as 'personal' | 'business'
+  const accountType = (user?.user_metadata?.account_type ?? 'personal') as 'personal' | 'business'
   const roleCtx    = useRole()
+  const effectiveUserId = roleCtx.effectiveUserId
   const isOwner    = roleCtx.isOwner
   const isStaff    = roleCtx.isStaff
   // ── UI translations — updates instantly when language changes ────────────────
@@ -1011,14 +1012,14 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
 
   // ── F6: End-of-Day Voice P&L ──────────────────────────────────────────────
   const speakPnL = useCallback(async () => {
-    if (!user?.id) return
+    if (!effectiveUserId) return
     setPnlLoading(true); setPnlSummary(null)
     try {
       const today = new Date().toISOString().split('T')[0]
       const { data } = await supabase
         .from('transactions')
         .select('type, amount, description')
-        .eq('user_id', user.id)
+        .eq('user_id', effectiveUserId)
         .eq('transaction_date', today)
 
       const rows = data ?? []
@@ -1029,7 +1030,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
       const { data: udhaarData } = await supabase
         .from('udhaar_customers')
         .select('total_credit, total_paid')
-        .eq('user_id', user.id)
+        .eq('user_id', effectiveUserId)
       const pending = (udhaarData ?? []).reduce((s, c) => s + Math.max(0, c.total_credit - c.total_paid), 0)
 
       // ── Build TTS-friendly summary — all amounts in English digits, phrases Romanized ──
@@ -1065,7 +1066,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
     } finally {
       setPnlLoading(false)
     }
-  }, [user, language])
+  }, [effectiveUserId, language])
 
   // ── directSave: schema-resilient Supabase insert ────────────────────────────
   // FIXES:
@@ -1126,7 +1127,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
     amount: number
     note: string
   }): Promise<{ success: boolean; error?: string }> => {
-    if (!user?.id) return { success: false, error: 'User not found' }
+    if (!effectiveUserId) return { success: false, error: 'User not found' }
 
     const customerName = sanitize(params.customerName)
     if (!customerName) return { success: false, error: 'Customer name missing' }
@@ -1137,7 +1138,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
       const { data: existingCustomer, error: findError } = await supabase
         .from('udhaar_customers')
         .select('id, total_credit')
-        .eq('user_id', user.id)
+        .eq('user_id', effectiveUserId)
         .ilike('name', customerName)
         .maybeSingle()
 
@@ -1152,7 +1153,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
         const { data: createdCustomer, error: createError } = await supabase
           .from('udhaar_customers')
           .insert([{
-            user_id: user.id,
+            user_id: effectiveUserId,
             name: customerName,
             notes: '',
           }])
@@ -1174,7 +1175,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
           .from('udhaar_transactions')
           .insert([{
             customer_id: customer.id,
-            user_id: user.id,
+            user_id: effectiveUserId,
             type: 'credit',
             amount: params.amount,
             note: params.note,
@@ -1200,7 +1201,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
         error: error instanceof Error ? error.message : 'Could not save Udhaar entry',
       }
     }
-  }, [user?.id])
+  }, [effectiveUserId])
 
   const buildVoiceEntryDescription = useCallback((entry: ParsedVoiceEntry): string => {
     const itemText = entry.quantity
@@ -1257,7 +1258,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
   const processAndSave = useCallback(async (transcript: string, confidence: SttConfidence = 'high') => {
     console.log('🎤 Transcript:', `"${transcript}"`)
     if (!transcript) { setErrorMsg('Could not hear clearly. Try again.'); setIsAiLoading(false); setAiStep(''); return }
-    if (!user?.id) { openManualForm(transcript); return }
+    if (!effectiveUserId) { openManualForm(transcript); return }
 
     const sttConf = confidence
     setIsAiLoading(true); setAiStep('Understanding...')
@@ -1270,7 +1271,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
       const { data } = await supabase
         .from('transactions')
         .select('type, amount, description, transaction_date')
-        .eq('user_id', user.id)
+        .eq('user_id', effectiveUserId)
         .order('transaction_date', { ascending: false })
         .limit(100)
       recentTx = data ?? []
@@ -1339,7 +1340,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
             amount: e.amount,
             description: desc,
             type: e.type || 'expense',
-            user_id: user.id,
+            user_id: effectiveUserId,
             voice_transcript: transcript,
             category_label: e.category,
             transaction_date: insertedAt.split('T')[0],
@@ -1409,7 +1410,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
       setShowForm(true); setIsAiLoading(false); setAiStep(''); return
     }
     openManualForm(transcript)
-  }, [accountType, buildVoiceEntryDescription, directSave, goToTransactions, inventory, localParseMulti, openManualForm, saveUdhaarCustomerEntry, speakLowStock, speakSaved, t.offline, user])
+  }, [accountType, buildVoiceEntryDescription, directSave, effectiveUserId, goToTransactions, inventory, localParseMulti, openManualForm, saveUdhaarCustomerEntry, speakLowStock, speakSaved, t.offline])
 
   useEffect(() => { processAndSaveRef.current = processAndSave as any }, [processAndSave])
 
@@ -1672,6 +1673,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
       {/* Receipt scanner overlay */}
       {showScanner && (
         <ReceiptScanner
+          accountType={accountType}
           onClose={() => setShowScanner(false)}
           onSaved={() => { goToTransactions() }}
         />
@@ -1732,7 +1734,7 @@ export default function Home({ language = 'en', setLanguage }: { language?: Supp
                       amount: item.amount,
                       description: item.description,
                       type: item.type,
-                      user_id: user.id,
+                      user_id: effectiveUserId,
                       voice_transcript: d.transcript,
                       category_label: item.category,
                       transaction_date: now.split('T')[0],

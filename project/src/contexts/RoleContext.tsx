@@ -208,7 +208,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       profile: resolvedProfile,
       isOwner,
       isStaff,
-      effectiveUserId: user?.id || '',
+      effectiveUserId: resolvedProfile?.owner_id || user?.id || '',
       shopName: resolvedProfile?.shop_name || DEFAULT_SHOP_NAME,
       updateShopName,
     }

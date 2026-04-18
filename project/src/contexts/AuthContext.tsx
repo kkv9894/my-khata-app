@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   const accountType: AccountType =
-    (user?.user_metadata?.account_type as AccountType) ?? 'business'
+    (user?.user_metadata?.account_type as AccountType) ?? 'personal'
 
   useEffect(() => {
     let isMounted = true
@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     businessName: string,
     phone: string,
-    accountType: AccountType = 'business'
+    accountType: AccountType = 'personal'
   ) => {
     const cleanEmail = email.trim().toLowerCase()
     const cleanBusinessName = businessName.trim() || cleanEmail.split('@')[0]

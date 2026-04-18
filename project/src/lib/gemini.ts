@@ -168,7 +168,7 @@ OUTPUT: JSON only, no markdown.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function analyzeTransaction(
   text: string,
-  accountType: 'personal' | 'business' = 'business'
+  accountType: 'personal' | 'business' = 'personal'
 ): Promise<ParsedVoiceTransactionResult | null> {
 
   const personaContext = accountType === 'business'
