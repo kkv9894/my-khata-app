@@ -1,8 +1,9 @@
 {
   "name": "ZivaKhata",
   "short_name": "ZivaKhata",
-  "description": "ZivaKhata — Your smart AI-powered Indian business ledger, powered by Ziva AI",
+  "description": "Voice-first AI ledger for personal and business finance.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#111111",
   "theme_color": "#111111",

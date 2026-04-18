@@ -209,6 +209,16 @@ const normalizeTranscript = (text: string, language: Lang): string => {
   return cleaned
 }
 
+const extractChirpTranscript = (data: unknown): string => {
+  const results = (data as { results?: Array<{ alternatives?: Array<{ transcript?: string }> }> })?.results
+  if (!Array.isArray(results)) return ''
+  return results
+    .flatMap(result => result.alternatives ?? [])
+    .map(alternative => alternative.transcript ?? '')
+    .join(' ')
+    .trim()
+}
+
 export default function useAudioRecorder({
   language = 'en',
   onTranscript,
@@ -271,31 +281,61 @@ export default function useAudioRecorder({
       let rawText = ''
 
       try {
-        setProcessingStep('Transcribing...')
-        const response = await fetch('/api/gemini', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'transcribe-audio',
-            payload: {
-              base64Audio,
-              mimeType,
-              language: langRef.current,
-            },
-          }),
-        })
+        if (langRef.current === 'en') {
+          setProviderUsed('Google Chirp')
+          setProcessingStep('Transcribing English...')
+          const chirpResponse = await fetch('/api/stt/chirp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              base64: base64Audio,
+              languageCodes: ['en-IN', 'en-US'],
+            }),
+          })
 
-        if (response.status === 429) {
-          cbRef.current.onRateLimit?.()
-          throw new Error('AI rate limit reached. Please wait a moment and try again.')
+          if (chirpResponse.ok) {
+            const chirpData = await chirpResponse.json().catch(() => ({}))
+            rawText = extractChirpTranscript(chirpData)
+          } else {
+            const chirpError = await chirpResponse.json().catch(() => ({})) as { error?: string }
+            if (chirpResponse.status === 429) {
+              cbRef.current.onRateLimit?.()
+              throw new Error('AI rate limit reached. Please wait a moment and try again.')
+            }
+            if (chirpError.error !== 'CHIRP_NOT_CONFIGURED') {
+              console.warn('[AudioRecorder] Chirp fallback skipped:', chirpError.error || chirpResponse.status)
+            }
+          }
         }
 
-        const data = await response.json().catch(() => ({}) as { error?: string; text?: string })
-        if (!response.ok) {
-          throw new Error(data.error || `Transcription failed (${response.status})`)
-        }
+        if (!rawText) {
+          setProviderUsed('Gemini API Route')
+          setProcessingStep('Transcribing...')
+          const response = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'transcribe-audio',
+              payload: {
+                base64Audio,
+                mimeType,
+                language: langRef.current,
+              },
+            }),
+          })
 
-        rawText = data.text || ''
+          if (response.status === 429) {
+            cbRef.current.onRateLimit?.()
+            throw new Error('AI rate limit reached. Please wait a moment and try again.')
+          }
+
+          const data = await response.json().catch(() => ({}) as { error?: string; text?: string })
+          if (!response.ok) {
+            throw new Error(data.error || `Transcription failed (${response.status})`)
+          }
+
+          rawText = data.text || ''
+        }
       } catch (serverError) {
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
         if (!apiKey) {
@@ -306,7 +346,20 @@ export default function useAudioRecorder({
         setProviderUsed('Gemini Direct')
         setProcessingStep('Transcribing locally...')
 
-        const prompt = `Transcribe this audio exactly as spoken.
+        const prompt = langRef.current === 'en'
+          ? `Transcribe this audio exactly as spoken.
+
+The speaker is primarily speaking English.
+Do not transliterate English words into Hindi, Tamil, Telugu, Kannada, or Malayalam.
+Do not guess Indian-language words when the audio is English.
+Write numbers as digits.
+Keep units exactly: kg, g, ml, l, packet, packets, piece, pieces.
+Do not explain anything.
+Do not translate anything.
+If speech is unclear or silent, return empty string.
+
+Return only the transcript text.`
+          : `Transcribe this audio exactly as spoken.
 
 Language may be ${langRef.current} mixed with English.
 Keep code-mixed words exactly as spoken.

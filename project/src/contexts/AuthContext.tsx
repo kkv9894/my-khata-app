@@ -61,20 +61,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (
     email: string,
     password: string,
-    businessName: string,
+    profileName: string,
     phone: string,
     accountType: AccountType = 'personal'
   ) => {
     const cleanEmail = email.trim().toLowerCase()
-    const cleanBusinessName = businessName.trim() || cleanEmail.split('@')[0]
+    const cleanProfileName = profileName.trim() || cleanEmail.split('@')[0]
     const cleanPhone = phone.trim()
+    const shopName = accountType === 'business' ? cleanProfileName : ''
 
     const { data, error } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
       options: {
         data: {
-          full_name: cleanBusinessName,
+          full_name: cleanProfileName,
+          shop_name: shopName,
           account_type: accountType,
         },
       },
@@ -87,7 +89,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.user) {
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: data.user.id,
-        full_name: cleanBusinessName,
+        full_name: cleanProfileName,
+        shop_name: shopName,
+        business_name: shopName || cleanProfileName,
         phone: cleanPhone,
         role: 'owner',
         owner_id: null,

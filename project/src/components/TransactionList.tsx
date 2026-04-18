@@ -2,8 +2,26 @@
 import { TrendingUp, TrendingDown, Calendar, Trash2, Search, SlidersHorizontal, X } from 'lucide-react';
 import { supabase, Transaction } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useRole } from '../contexts/RoleContext';
 
 type SupportedLanguage = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml'
+
+const UI_TEXT: Record<SupportedLanguage, {
+  history: string
+  refresh: string
+  search: string
+  noTransactions: string
+  useMic: string
+  received: string
+  spent: string
+}> = {
+  en: { history: 'History', refresh: 'Refresh', search: 'Search by item, amount...', noTransactions: 'No transactions', useMic: 'Use the mic to add one', received: 'Received', spent: 'Spent' },
+  hi: { history: 'इतिहास', refresh: 'रीफ्रेश', search: 'आइटम या राशि खोजें...', noTransactions: 'कोई लेनदेन नहीं', useMic: 'माइक से जोड़ें', received: 'प्राप्त', spent: 'खर्च' },
+  ta: { history: 'வரலாறு', refresh: 'புதுப்பிக்கவும்', search: 'பொருள் அல்லது தொகை தேடவும்...', noTransactions: 'பரிவர்த்தனை இல்லை', useMic: 'மைக் மூலம் சேர்க்கவும்', received: 'பெற்றது', spent: 'செலவிட்டது' },
+  te: { history: 'చరిత్ర', refresh: 'రిఫ్రెష్', search: 'వస్తువు లేదా మొత్తం వెతకండి...', noTransactions: 'లావాదేవీలు లేవు', useMic: 'మైక్‌తో జోడించండి', received: 'వచ్చింది', spent: 'ఖర్చు' },
+  kn: { history: 'ಇತಿಹಾಸ', refresh: 'ರಿಫ್ರೆಶ್', search: 'ಐಟಂ ಅಥವಾ ಮೊತ್ತ ಹುಡುಕಿ...', noTransactions: 'ವಹಿವಾಟುಗಳಿಲ್ಲ', useMic: 'ಮೈಕ್ ಬಳಸಿ ಸೇರಿಸಿ', received: 'ಬಂದಿತು', spent: 'ಖರ್ಚು' },
+  ml: { history: 'ചരിത്രം', refresh: 'റിഫ്രെഷ്', search: 'ഇനം അല്ലെങ്കിൽ തുക തിരയുക...', noTransactions: 'ഇടപാടുകൾ ഇല്ല', useMic: 'മൈക്ക് ഉപയോഗിച്ച് ചേർക്കുക', received: 'ലഭിച്ചു', spent: 'ചെലവാക്കി' },
+}
 
 const CATEGORIES = [
   { id: 'all',        emoji: '📋', color: 'bg-gray-900 text-white',     inactive: 'bg-white text-slate-400 border border-gray-200',     label: { en:'All',         hi:'सभी',       ta:'அனைத்தும்',   te:'అన్నీ',       kn:'ಎಲ್ಲಾ',    ml:'എല്ലാം'       }, keywords: [],          typeFilter: undefined as 'income'|'expense'|undefined },
@@ -55,25 +73,27 @@ interface Props { language?: SupportedLanguage; refreshKey?: number }
 
 export default function TransactionList({ language = 'en', refreshKey = 0 }: Props) {
   const { user } = useAuth()
+  const { effectiveUserId } = useRole()
   const [transactions, setTransactions]     = useState<Transaction[]>([])
   const [loading, setLoading]               = useState(true)
   const [activeCategory, setActiveCategory] = useState('all')
   const [searchText, setSearchText]         = useState('')
   const [showSearch, setShowSearch]         = useState(false)
   const lang = language as SupportedLanguage
+  const ui = UI_TEXT[lang]
 
   const loadTransactions = useCallback(async () => {
-    if (!user) return
+    if (!user || !effectiveUserId) return
     setLoading(true)
     const { data, error } = await supabase
       .from('transactions').select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', effectiveUserId)
       .order('transaction_date', { ascending: false })
       .order('created_at', { ascending: false })
     if (error) console.error('TransactionList load error:', error)
     else setTransactions(data || [])
     setLoading(false)
-  }, [user])
+  }, [effectiveUserId, user])
 
   useEffect(() => { void loadTransactions() }, [loadTransactions, refreshKey])
 
@@ -85,7 +105,10 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
   }
 
   const shareOnWhatsApp = (t: Transaction) => {
-    const msg = `${t.type === 'income' ? 'Received' : 'Spent'} ₹${t.amount} — ${t.description || 'Voice entry'} on ${t.transaction_date}`
+    const timestamp = t.created_at
+      ? new Date(t.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : t.transaction_date
+    const msg = `${t.type === 'income' ? ui.received : ui.spent} ₹${t.amount} — ${t.description || 'Voice entry'} on ${timestamp}`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
@@ -112,7 +135,12 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
   const totalIncome  = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const totalExpense = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`
-  const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+  const formatDateTime = (date: string | null, createdAt: string | null) => {
+    const value = createdAt || date
+    return value
+      ? new Date(value).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '—'
+  }
 
   if (loading) return (
     <div className="flex h-full items-center justify-center">
@@ -128,12 +156,12 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
       {/* Header */}
       <div className="bg-navy-800 border-b border-navy-600 px-4 pt-4 pb-0">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-black text-white">History</h2>
+          <h2 className="text-lg font-black text-white">{ui.history}</h2>
           <div className="flex items-center gap-2">
             <button
               onClick={() => void loadTransactions()}
               className="rounded-xl p-2 bg-white/10 text-white active:bg-white/20"
-              title="Refresh"
+              title={ui.refresh}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -155,7 +183,7 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
               autoFocus
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
-              placeholder="Search by item, amount..."
+              placeholder={ui.search}
               className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-400"
             />
             {searchText && (
@@ -218,10 +246,10 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="mb-3 text-4xl">{activeCat.emoji}</div>
             <p className="font-bold text-slate-400">
-              No {(activeCat.label as Record<string, string>)[lang] ?? (activeCat.label as Record<string, string>)['en']} transactions
+              {ui.noTransactions}: {(activeCat.label as Record<string, string>)[lang] ?? (activeCat.label as Record<string, string>)['en']}
             </p>
             <p className="mt-1 text-xs text-slate-400">
-              {searchText ? `No results for "${searchText}"` : 'Use the mic to add one'}
+              {searchText ? `No results for "${searchText}"` : ui.useMic}
             </p>
           </div>
         ) : (
@@ -249,7 +277,7 @@ export default function TransactionList({ language = 'en', refreshKey = 0 }: Pro
                       </p>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1">
                         <Calendar size={10} className="text-slate-400" />
-                        <span className="text-[11px] text-slate-400">{formatDate(t.transaction_date)}</span>
+                        <span className="text-[11px] text-slate-400">{formatDateTime(t.transaction_date, t.created_at)}</span>
                         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${
                           t.type === 'income' ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'
                         }`}>

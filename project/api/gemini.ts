@@ -155,7 +155,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const langName = LANG_NAMES[language] ?? 'English'
       const safeMimeType = normalizeAudioMimeType(mimeType)
 
-      const transcribePrompt = `Transcribe this audio exactly as spoken.
+      const transcribePrompt = language === 'en'
+        ? `Transcribe this audio exactly as spoken.
+
+The speaker is primarily speaking English.
+Do not transliterate English words into Indian languages.
+Do not guess Hindi, Tamil, Telugu, Kannada, or Malayalam words if the audio is English.
+Write numbers as digits.
+Keep units exactly: kg, g, ml, l, packet, packets, piece, pieces.
+Do not explain anything.
+Do not translate anything.
+If speech is unclear or silent, return empty string.
+
+Return only the transcript text.`
+        : `Transcribe this audio exactly as spoken.
 
 Language may be ${langName} mixed with English.
 Keep code-mixed words exactly as spoken.

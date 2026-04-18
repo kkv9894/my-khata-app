@@ -1,44 +1,38 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>ZivaKhata — Smart AI Ledger</title>
+    <meta name="theme-color" content="#111111" />
+    <meta name="description" content="ZivaKhata - voice-first AI ledger for personal and business finance." />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>ZivaKhata - Smart AI Ledger</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.all.min.js"></script>
-
     <style>
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body, #root {
-        height: 100%; margin: 0; padding: 0;
-        background: #111111; color: #FFFFFF;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: #111111;
+        color: #ffffff;
         font-family: 'DM Sans', system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
       }
       ::-webkit-scrollbar { width: 3px; }
-      ::-webkit-scrollbar-track { background: #0A0A0A; }
+      ::-webkit-scrollbar-track { background: #0a0a0a; }
       ::-webkit-scrollbar-thumb { background: #333333; border-radius: 2px; }
       ::placeholder { color: #555555; opacity: 1; }
     </style>
-
-    <script>
-      window.global = window;
-      window.process = { env: { NODE_ENV: 'development' } };
-      window.onload = function() {
-        if (typeof lamejs !== 'undefined') {
-          window.Lame = lamejs;
-          console.log('ZivaKhata Audio Engine Ready');
-        }
-      };
-    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
-</html>
+ </html>
