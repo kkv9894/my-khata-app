@@ -14,6 +14,7 @@ import {
   Save,
   Shield,
   Smartphone,
+  Trash2,
   User,
   X,
 } from 'lucide-react'
@@ -225,6 +226,7 @@ export default function Settings({ language, setLanguage }: Props) {
   const [langOpen, setLangOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
   const [notifOn, setNotifOn] = useState(() => localStorage.getItem('khata_notif') !== 'off')
 
   useEffect(() => {
@@ -240,6 +242,49 @@ export default function Settings({ language, setLanguage }: Props) {
     const error = await exportCSV(user?.id ?? '')
     setExporting(false)
     showToast(error ?? 'Ledger exported')
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!user) return
+
+    const confirmed = window.confirm(
+      'Delete this account permanently? This will remove your profile, ledger, and related data from Supabase.'
+    )
+    if (!confirmed) return
+
+    setDeletingAccount(true)
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session?.access_token) {
+        throw new Error('Your session expired. Please log in again and retry.')
+      }
+
+      const response = await fetch('/api/delete-account', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json().catch(() => ({})) as { error?: string }
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete account')
+      }
+
+      localStorage.removeItem('khata_notif')
+      localStorage.removeItem('khata_offline_queue')
+      localStorage.removeItem('appLanguage')
+      sessionStorage.clear()
+      await supabase.auth.signOut()
+      window.location.reload()
+    } catch (error: unknown) {
+      showToast(getErrorMessage(error, 'Failed to delete account'))
+      setDeletingAccount(false)
+    }
   }
 
   return (
@@ -394,6 +439,20 @@ export default function Settings({ language, setLanguage }: Props) {
         >
           <Ico bg="bg-red-950">{signingOut ? <Loader2 size={16} className="animate-spin text-red-400" /> : <LogOut size={16} className="text-red-500" />}</Ico>
           <span className="flex-1 text-left text-sm font-black text-red-400">{signingOut ? 'Signing out...' : 'Sign Out'}</span>
+        </button>
+        <Div />
+        <button
+          onClick={() => void handleDeleteAccount()}
+          disabled={deletingAccount}
+          className="flex w-full items-center gap-4 px-4 py-4 transition-colors active:bg-red-950 disabled:opacity-50"
+        >
+          <Ico bg="bg-red-950">
+            {deletingAccount ? <Loader2 size={16} className="animate-spin text-red-400" /> : <Trash2 size={16} className="text-red-500" />}
+          </Ico>
+          <div className="flex-1 text-left">
+            <p className="text-sm font-black text-red-400">{deletingAccount ? 'Deleting account...' : 'Delete Account'}</p>
+            <p className="text-[10px] text-slate-400">Permanently removes this account and linked Supabase data.</p>
+          </div>
         </button>
       </Section>
 
