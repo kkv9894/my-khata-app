@@ -3,6 +3,7 @@ import { ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react'
 import type { SupportedLanguage } from '../lib/types'
 import { useAuth } from '../contexts/AuthContext'
 import { getBrandName, getTagline } from '../lib/brand'
+import { supabase } from '../lib/supabase'
 
 type AccountType = 'personal' | 'business'
 
@@ -251,7 +252,7 @@ export default function Auth({ language = 'en' }: { language?: SupportedLanguage
         if (error) setGlobalErr(error.message)
         else setSuccessMsg(t.created)
       } else {
-        const { error } = await (await import('../lib/supabase')).supabase.auth.resetPasswordForEmail(email)
+      const { error } = await supabase.auth.resetPasswordForEmail(email)
         if (error) setGlobalErr(error.message)
         else setSuccessMsg(t.resetSent)
       }
