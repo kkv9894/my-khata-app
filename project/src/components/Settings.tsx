@@ -1,7 +1,7 @@
-// src/components/Settings.tsx
+﻿// src/components/Settings.tsx
 // All settings features: profile edit, notifications toggle, CSV export,
 // AI copyright, app version, help & support, language, account type, sign out.
-// Uses onPointerDown everywhere for reliable mobile taps.
+// Uses onClick everywhere for reliable mobile taps.
 
 import { useState, useEffect } from 'react'
 import {
@@ -19,11 +19,11 @@ type Lang = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml'
 
 const LANGUAGES: { code: Lang; label: string; native: string }[] = [
   { code: 'en', label: 'English',   native: 'English'  },
-  { code: 'hi', label: 'Hindi',     native: 'हिंदी'      },
-  { code: 'ta', label: 'Tamil',     native: 'தமிழ்'      },
-  { code: 'te', label: 'Telugu',    native: 'తెలుగు'     },
-  { code: 'kn', label: 'Kannada',   native: 'ಕನ್ನಡ'      },
-  { code: 'ml', label: 'Malayalam', native: 'മലയാളം'    },
+  { code: 'hi', label: 'Hindi',     native: 'à¤¹à¤¿à¤‚à¤¦à¥€'      },
+  { code: 'ta', label: 'Tamil',     native: 'à®¤à®®à®¿à®´à¯'      },
+  { code: 'te', label: 'Telugu',    native: 'à°¤à±†à°²à±à°—à±'     },
+  { code: 'kn', label: 'Kannada',   native: 'à²•à²¨à³à²¨à²¡'      },
+  { code: 'ml', label: 'Malayalam', native: 'à´®à´²à´¯à´¾à´³à´‚'    },
 ]
 
 interface Props {
@@ -31,14 +31,14 @@ interface Props {
   setLanguage: (l: Lang) => void
 }
 
-// ─── Toast hook ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Toast hook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function useToast() {
   const [msg, setMsg] = useState('')
   const show = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000) }
   return { msg, show }
 }
 
-// ─── Profile Edit Modal ───────────────────────────────────────────────────────
+// â”€â”€â”€ Profile Edit Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ProfileModal({ user, onClose, onSaved, accountType }: {
   user: any; onClose: () => void; onSaved: () => void; accountType: 'personal' | 'business'
 }) {
@@ -68,25 +68,25 @@ function ProfileModal({ user, onClose, onSaved, accountType }: {
 
   return (
     <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
-         onPointerDown={e => { if (e.target === e.currentTarget) onClose() }}>
+         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="w-full max-w-lg rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-black">Edit Profile</h2>
-          <button onPointerDown={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200">
+          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200">
             <X size={16} />
           </button>
         </div>
         <div className="space-y-3">
           <div>
             <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Email (cannot be changed)</p>
-            <div className="rounded-2xl bg-navy-700 px-4 py-3 text-sm font-bold text-slate-400">{user?.email ?? '—'}</div>
+            <div className="rounded-2xl bg-navy-700 px-4 py-3 text-sm font-bold text-slate-400">{user?.email ?? 'â€”'}</div>
           </div>
           <div>
             <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Your Name</p>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter your name"
               className="w-full rounded-2xl border-2 border-transparent bg-navy-900 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan" />
           </div>
-          {/* Shop Name — Business only */}
+          {/* Shop Name â€” Business only */}
           {accountType === 'business' && (
             <div>
               <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Shop / Business Name</p>
@@ -95,7 +95,7 @@ function ProfileModal({ user, onClose, onSaved, accountType }: {
             </div>
           )}
           {err && <p className="rounded-xl bg-red-900/30 px-3 py-2 text-xs font-bold text-red-400">{err}</p>}
-          <button onPointerDown={() => void save()} disabled={saving}
+          <button onClick={() => void save()} disabled={saving}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan py-4 text-sm font-black text-navy-950 active:scale-95 transition-transform disabled:opacity-60">
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             {saving ? 'Saving...' : 'Save Changes'}
@@ -106,7 +106,7 @@ function ProfileModal({ user, onClose, onSaved, accountType }: {
   )
 }
 
-// ─── App Version Modal ────────────────────────────────────────────────────────
+// â”€â”€â”€ App Version Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AppVersionModal({ onClose, brandName }: { onClose: () => void; brandName: string }) {
   const rows = [
     ['App Name',     brandName],
@@ -115,17 +115,17 @@ function AppVersionModal({ onClose, brandName }: { onClose: () => void; brandNam
     ['Platform',     'Progressive Web App (PWA)'],
     ['Database',     'Supabase (PostgreSQL)'],
     ['Hosted on',    'Vercel Edge Network'],
-    ['Voice AI',     'Sarvam AI · Google STT · ElevenLabs'],
+    ['Voice AI',     'Sarvam AI Â· Google STT Â· ElevenLabs'],
     ['Language AI',  'Google Gemini 1.5 Pro'],
-    ['Developer',    `© 2026 ${brandName}`],
+    ['Developer',    `Â© 2026 ${brandName}`],
   ]
   return (
     <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
-         onPointerDown={e => { if (e.target === e.currentTarget) onClose() }}>
+         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="w-full max-w-lg rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-black">App Info</h2>
-          <button onPointerDown={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200"><X size={16} /></button>
+          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200"><X size={16} /></button>
         </div>
         <div className="space-y-2">
           {rows.map(([label, value]) => (
@@ -140,32 +140,32 @@ function AppVersionModal({ onClose, brandName }: { onClose: () => void; brandNam
   )
 }
 
-// ─── Help & Support Modal ─────────────────────────────────────────────────────
+// â”€â”€â”€ Help & Support Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const FAQ_ITEMS = [
   { q: 'How do I add a transaction?',      a: 'Hold the mic button and speak. Say "rice 50 bought" or "customer paid 200". The AI saves it automatically.' },
-  { q: 'Why is my voice not working?',     a: 'Allow microphone permission in your browser. On mobile Chrome: Settings → Site Settings → Microphone → Allow.' },
+  { q: 'Why is my voice not working?',     a: 'Allow microphone permission in your browser. On mobile Chrome: Settings â†’ Site Settings â†’ Microphone â†’ Allow.' },
   { q: 'What languages are supported?',   a: 'English, Hindi, Tamil, Telugu, Kannada, Malayalam. Mixed dialects like Tanglish and Hinglish also work.' },
   { q: 'How does Inventory work?',         a: 'Say "Added 50 kg sugar" to increase stock. Say "Sold 2 kg sugar for 100" to decrease. Ask "How much sugar is left?" to check.' },
-  { q: 'How do I export my data?',         a: 'Settings → Export Ledger to CSV. Your full transaction history downloads as a spreadsheet.' },
+  { q: 'How do I export my data?',         a: 'Settings â†’ Export Ledger to CSV. Your full transaction history downloads as a spreadsheet.' },
   { q: 'What is Udhaar (credit)?',         a: 'Track money owed by customers. Go to the Udhaar tab, add a customer, and record how much they owe.' },
-  { q: 'Is my data secure?',              a: 'Yes. All data is stored in Supabase with Row Level Security — only you can see your transactions. We never sell your data.' },
+  { q: 'Is my data secure?',              a: 'Yes. All data is stored in Supabase with Row Level Security â€” only you can see your transactions. We never sell your data.' },
 ]
 
 function HelpModal({ onClose }: { onClose: () => void }) {
   const [open, setOpen] = useState<number | null>(null)
   return (
     <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
-         onPointerDown={e => { if (e.target === e.currentTarget) onClose() }}>
+         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="w-full max-w-lg rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl max-h-[85vh] overflow-y-auto">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-black">Help & Support</h2>
-          <button onPointerDown={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200"><X size={16} /></button>
+          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200"><X size={16} /></button>
         </div>
         <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Frequently Asked Questions</p>
         <div className="space-y-2">
           {FAQ_ITEMS.map((item, i) => (
             <div key={i} className="rounded-2xl border border-navy-600 overflow-hidden">
-              <button onPointerDown={() => setOpen(open === i ? null : i)}
+              <button onClick={() => setOpen(open === i ? null : i)}
                 className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-navy-900">
                 <span className="text-sm font-bold text-white pr-3">{item.q}</span>
                 {open === i ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
@@ -187,48 +187,48 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ─── AI Copyright Modal ───────────────────────────────────────────────────────
+// â”€â”€â”€ AI Copyright Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const AI_ITEMS = [
   {
     title: 'Language AI',
     name:  'Google Gemini 1.5 Pro',
     desc:  'Powers voice-to-transaction parsing, Smart Clerk queries, receipt scanning, and business insights.',
-    copy:  '© Google LLC. Used under Google AI API Terms of Service.',
+    copy:  'Â© Google LLC. Used under Google AI API Terms of Service.',
   },
   {
     title: 'Voice Recognition (Primary)',
     name:  'Sarvam AI',
     desc:  'Indian-language Speech-to-Text. Optimised for Hindi, Tamil, Telugu, Kannada, Malayalam and mixed dialects like Tanglish and Hinglish.',
-    copy:  '© Sarvam AI. Used under Sarvam API Terms of Service.',
+    copy:  'Â© Sarvam AI. Used under Sarvam API Terms of Service.',
   },
   {
     title: 'Voice Recognition (Fallback)',
     name:  'Google Cloud Speech-to-Text (Chirp)',
     desc:  'Fallback STT provider for broad language and accent coverage.',
-    copy:  '© Google LLC. Used under Google Cloud Terms of Service.',
+    copy:  'Â© Google LLC. Used under Google Cloud Terms of Service.',
   },
   {
     title: 'Text-to-Speech (Soundbox)',
-    name:  'ElevenLabs · Web Speech API',
+    name:  'ElevenLabs Â· Web Speech API',
     desc:  'Speaks transaction confirmations and low-stock alerts aloud.',
-    copy:  '© ElevenLabs Inc. Used under ElevenLabs API Terms of Service.',
+    copy:  'Â© ElevenLabs Inc. Used under ElevenLabs API Terms of Service.',
   },
   {
     title: 'Database & Auth',
     name:  'Supabase',
     desc:  'All transaction data, inventory, and user profiles are stored in Supabase (PostgreSQL). Row Level Security ensures only you can access your data.',
-    copy:  '© Supabase Inc. Used under Supabase Terms of Service.',
+    copy:  'Â© Supabase Inc. Used under Supabase Terms of Service.',
   },
 ]
 
 function AiCopyrightModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/50"
-         onPointerDown={e => { if (e.target === e.currentTarget) onClose() }}>
+         onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="w-full max-w-lg rounded-t-3xl bg-navy-800 p-6 pb-12 shadow-2xl max-h-[85vh] overflow-y-auto">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-black">AI & Attributions</h2>
-          <button onPointerDown={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200"><X size={16} /></button>
+          <button onClick={onClose} className="rounded-full bg-navy-700 p-2 active:bg-gray-200"><X size={16} /></button>
         </div>
         <div className="space-y-3">
           {AI_ITEMS.map(item => (
@@ -244,7 +244,7 @@ function AiCopyrightModal({ onClose }: { onClose: () => void }) {
               ZivaKhata is an independent product. All third-party AI services are used via official APIs under their respective terms. User data is never sold or shared.
             </p>
             <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-              © 2026 ZivaKhata · All rights reserved
+              Â© 2026 ZivaKhata Â· All rights reserved
             </p>
           </div>
         </div>
@@ -253,7 +253,7 @@ function AiCopyrightModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ─── CSV Export ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ CSV Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function exportCSV(userId: string): Promise<string | null> {
   try {
     const { data, error } = await supabase
@@ -264,7 +264,7 @@ async function exportCSV(userId: string): Promise<string | null> {
       .limit(5000)
     if (error) throw error
     if (!data || data.length === 0) return 'No transactions found to export.'
-    const header = 'Date,Type,Amount (₹),Description,Category\n'
+    const header = 'Date,Type,Amount (â‚¹),Description,Category\n'
     const rows   = data.map(r =>
       `"${r.transaction_date ?? ''}","${r.type}","${r.amount}","${String(r.description ?? '').replace(/"/g, '""')}","${r.category_label ?? 'General'}"`
     ).join('\n')
@@ -277,13 +277,13 @@ async function exportCSV(userId: string): Promise<string | null> {
   } catch (e: any) { return e?.message ?? 'Export failed' }
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Settings({ language, setLanguage }: Props) {
   const { user, signOut } = useAuth()
   const { shopName }      = useRole()
   const { msg: toast, show: showToast } = useToast()
 
-  // ── Derived brand name — updates live when language changes ──────────────────
+  // â”€â”€ Derived brand name â€” updates live when language changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const brandName = getBrandName(language)
 
   const [modal,      setModal]      = useState<'profile' | 'version' | 'help' | 'ai' | null>(null)
@@ -306,7 +306,7 @@ export default function Settings({ language, setLanguage }: Props) {
     if (type === accountType) return
     const { error } = await supabase.auth.updateUser({ data: { account_type: type } })
     if (error) { showToast('Failed to update'); return }
-    showToast(`Switched to ${type === 'business' ? 'Business 🏪' : 'Personal 👤'}`)
+    showToast(`Switched to ${type === 'business' ? 'Business ðŸª' : 'Personal ðŸ‘¤'}`)
     setTimeout(() => window.location.reload(), 1000)
   }
 
@@ -314,7 +314,7 @@ export default function Settings({ language, setLanguage }: Props) {
     setExporting(true)
     const err = await exportCSV(user?.id ?? '')
     setExporting(false)
-    showToast(err ?? '✅ Ledger exported!')
+    showToast(err ?? 'âœ… Ledger exported!')
   }
 
   return (
@@ -328,19 +328,19 @@ export default function Settings({ language, setLanguage }: Props) {
       )}
 
       {/* Modals */}
-      {modal === 'profile' && <ProfileModal user={user} accountType={accountType} onClose={() => setModal(null)} onSaved={() => showToast('✅ Profile saved!')} />}
+      {modal === 'profile' && <ProfileModal user={user} accountType={accountType} onClose={() => setModal(null)} onSaved={() => showToast('âœ… Profile saved!')} />}
       {modal === 'version' && <AppVersionModal onClose={() => setModal(null)} brandName={brandName} />}
       {modal === 'help'    && <HelpModal onClose={() => setModal(null)} />}
       {modal === 'ai'      && <AiCopyrightModal onClose={() => setModal(null)} />}
 
-      {/* ── Profile card ───────────────────────────── */}
+      {/* â”€â”€ Profile card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <button
-        onPointerDown={() => setModal('profile')}
+        onClick={() => setModal('profile')}
         className="mx-4 mt-4 rounded-3xl bg-black p-5 text-white shadow-2xl active:scale-[0.98] transition-transform text-left"
       >
         {/* Brand badge inside card */}
         <div className="mb-3 flex items-center gap-1.5">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">✨ {brandName}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">âœ¨ {brandName}</span>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-navy-800/15 text-2xl font-black shrink-0">
@@ -351,7 +351,7 @@ export default function Settings({ language, setLanguage }: Props) {
             <p className="truncate text-[11px] text-white/50">{user?.email}</p>
             <div className="mt-1 flex items-center gap-2">
               <span className="rounded-full bg-navy-800/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-white/60">
-                {accountType === 'business' ? '🏪 Business' : '👤 Personal'}
+                {accountType === 'business' ? 'ðŸª Business' : 'ðŸ‘¤ Personal'}
               </span>
               <span className="text-[9px] text-white/30 font-mono">ID: {maskedUid}</span>
             </div>
@@ -365,17 +365,17 @@ export default function Settings({ language, setLanguage }: Props) {
                 <p className="text-[9px] font-black uppercase tracking-widest text-white/30">Shop</p>
                 <p className="text-sm font-black text-white/80">{shopName}</p>
               </div>
-              <p className="text-[10px] text-white/30">Tap to edit →</p>
+              <p className="text-[10px] text-white/30">Tap to edit â†’</p>
             </>
           ) : (
-            <p className="text-[10px] text-white/30 w-full text-right">Tap to edit profile →</p>
+            <p className="text-[10px] text-white/30 w-full text-right">Tap to edit profile â†’</p>
           )}
         </div>
       </button>
 
-      {/* ── Preferences ────────────────────────────── */}
+      {/* â”€â”€ Preferences â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Preferences">
-        <button onPointerDown={() => { setLangOpen(v => !v); setTypeOpen(false) }}
+        <button onClick={() => { setLangOpen(v => !v); setTypeOpen(false) }}
           className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
           <Ico bg="bg-blue-50"><Globe size={16} className="text-blue-500" /></Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">Language</span>
@@ -385,7 +385,7 @@ export default function Settings({ language, setLanguage }: Props) {
         {langOpen && (
           <div className="border-t border-gray-50 bg-navy-900 px-4 py-2">
             {LANGUAGES.map(l => (
-              <button key={l.code} onPointerDown={() => { setLanguage(l.code); setLangOpen(false); showToast(`Language: ${l.label}`) }}
+              <button key={l.code} onClick={() => { setLanguage(l.code); setLangOpen(false); showToast(`Language: ${l.label}`) }}
                 className="flex w-full items-center justify-between rounded-xl px-3 py-3 active:bg-navy-800">
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-black text-white">{l.native}</span>
@@ -397,7 +397,7 @@ export default function Settings({ language, setLanguage }: Props) {
           </div>
         )}
         <Div />
-        {/* ── Account Type — locked for Business, upgradeable for Personal ── */}
+        {/* â”€â”€ Account Type â€” locked for Business, upgradeable for Personal â”€â”€ */}
         {accountType === 'business' ? (
           /* Business users: read-only, cannot downgrade */
           <div className="flex w-full items-center gap-4 px-4 py-4 opacity-80">
@@ -407,13 +407,13 @@ export default function Settings({ language, setLanguage }: Props) {
               <p className="text-[10px] text-slate-400">Business accounts cannot be downgraded</p>
             </div>
             <span className="rounded-full bg-purple-900/40 border border-purple-600/40 px-2.5 py-1 text-[10px] font-black text-purple-300">
-              🏪 Business
+              ðŸª Business
             </span>
           </div>
         ) : (
           /* Personal users: can upgrade to Business */
           <>
-            <button onPointerDown={() => { setTypeOpen(v => !v); setLangOpen(false) }}
+            <button onClick={() => { setTypeOpen(v => !v); setLangOpen(false) }}
               className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
               <Ico bg="bg-purple-50"><Building2 size={16} className="text-purple-500" /></Ico>
               <span className="flex-1 text-left text-sm font-bold text-white">Account Type</span>
@@ -423,12 +423,12 @@ export default function Settings({ language, setLanguage }: Props) {
             {typeOpen && (
               <div className="border-t border-navy-700 bg-navy-900 px-4 py-2">
                 <p className="mb-1 px-3 text-[9px] font-black uppercase tracking-widest text-orange-400">
-                  ⚠ Upgrading to Business reloads the app
+                  âš  Upgrading to Business reloads the app
                 </p>
-                <button onPointerDown={() => void handleAccountType('business')}
+                <button onClick={() => void handleAccountType('business')}
                   className="flex w-full items-center justify-between rounded-xl px-3 py-3 active:bg-navy-800">
                   <div className="flex items-center gap-3">
-                    <span className="text-lg">🏪</span>
+                    <span className="text-lg">ðŸª</span>
                     <div className="text-left">
                       <p className="text-sm font-black text-white">Upgrade to Business</p>
                       <p className="text-[10px] text-slate-400">Unlock Inventory, Staff & Insights</p>
@@ -442,7 +442,7 @@ export default function Settings({ language, setLanguage }: Props) {
         )}
       </Section>
 
-      {/* ── Notifications ──────────────────────────── */}
+      {/* â”€â”€ Notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Notifications">
         <div className="flex w-full items-center justify-between gap-3 px-4 py-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -456,9 +456,9 @@ export default function Settings({ language, setLanguage }: Props) {
               </p>
             </div>
           </div>
-          {/* Toggle — shrink-0 prevents it from being squeezed */}
+          {/* Toggle â€” shrink-0 prevents it from being squeezed */}
           <button
-            onPointerDown={() => { setNotifOn(v => !v); showToast(notifOn ? '🔕 Notifications off' : '🔔 Notifications on') }}
+            onClick={() => { setNotifOn(v => !v); showToast(notifOn ? 'ðŸ”• Notifications off' : 'ðŸ”” Notifications on') }}
             className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${notifOn ? 'bg-cyan' : 'bg-navy-600'}`}
           >
             <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${notifOn ? 'translate-x-5' : 'translate-x-1'}`} />
@@ -466,23 +466,23 @@ export default function Settings({ language, setLanguage }: Props) {
         </div>
       </Section>
 
-      {/* ── Data ───────────────────────────────────── */}
+      {/* â”€â”€ Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Data">
-        <button onPointerDown={() => !exporting && void handleExport()}
+        <button onClick={() => !exporting && void handleExport()}
           className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
           <Ico bg="bg-green-50">
             {exporting ? <Loader2 size={16} className="animate-spin text-green-500" /> : <Download size={16} className="text-green-500" />}
           </Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">
-            {exporting ? 'Exporting…' : 'Download Ledger as CSV'}
+            {exporting ? 'Exportingâ€¦' : 'Download Ledger as CSV'}
           </span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
       </Section>
 
-      {/* ── About ──────────────────────────────────── */}
+      {/* â”€â”€ About â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="About">
-        <button onPointerDown={() => setModal('version')}
+        <button onClick={() => setModal('version')}
           className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
           <Ico bg="bg-navy-700"><Smartphone size={16} className="text-slate-400" /></Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">App Version</span>
@@ -490,21 +490,21 @@ export default function Settings({ language, setLanguage }: Props) {
           <ChevronRight size={14} className="text-slate-500" />
         </button>
         <Div />
-        <button onPointerDown={() => setModal('help')}
+        <button onClick={() => setModal('help')}
           className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
           <Ico bg="bg-blue-50"><HelpCircle size={16} className="text-blue-500" /></Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">Help & Support</span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
         <Div />
-        <button onPointerDown={() => setModal('ai')}
+        <button onClick={() => setModal('ai')}
           className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
           <Ico bg="bg-indigo-50"><Cpu size={16} className="text-indigo-500" /></Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">AI & Attributions</span>
           <ChevronRight size={14} className="text-slate-500" />
         </button>
         <Div />
-        <button onPointerDown={() => window.open('mailto:support@mykhata.app?subject=Privacy', '_blank')}
+        <button onClick={() => window.open('mailto:support@mykhata.app?subject=Privacy', '_blank')}
           className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
           <Ico bg="bg-green-50"><Shield size={16} className="text-green-500" /></Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">Privacy Policy</span>
@@ -512,9 +512,9 @@ export default function Settings({ language, setLanguage }: Props) {
         </button>
       </Section>
 
-      {/* ── Account ────────────────────────────────── */}
+      {/* â”€â”€ Account â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Account">
-        <button onPointerDown={() => setModal('profile')}
+        <button onClick={() => setModal('profile')}
           className="flex w-full items-center gap-4 px-4 py-4 active:bg-navy-900 transition-colors">
           <Ico bg="bg-indigo-50"><User size={16} className="text-indigo-500" /></Ico>
           <span className="flex-1 text-left text-sm font-bold text-white">Edit Profile</span>
@@ -522,10 +522,10 @@ export default function Settings({ language, setLanguage }: Props) {
         </button>
       </Section>
 
-      {/* ── Sign Out ───────────────────────────────── */}
+      {/* â”€â”€ Sign Out â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Section label="Session">
         <button
-          onPointerDown={() => { if (!signingOut) { setSigningOut(true); void signOut() } }}
+          onClick={() => { if (!signingOut) { setSigningOut(true); void signOut() } }}
           disabled={signingOut}
           className="flex w-full items-center gap-4 px-4 py-4 active:bg-red-950 transition-colors disabled:opacity-50"
         >
@@ -533,23 +533,23 @@ export default function Settings({ language, setLanguage }: Props) {
             {signingOut ? <Loader2 size={16} className="animate-spin text-red-400" /> : <LogOut size={16} className="text-red-500" />}
           </Ico>
           <span className="flex-1 text-left text-sm font-black text-red-400">
-            {signingOut ? 'Signing out…' : 'Sign Out'}
+            {signingOut ? 'Signing outâ€¦' : 'Sign Out'}
           </span>
         </button>
       </Section>
 
-      {/* ── Footer ─────────────────────────────────── */}
+      {/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="mt-8 px-4 pb-4 text-center">
         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-          v1.0.0 · © 2026 {brandName}
+          v1.0.0 Â· Â© 2026 {brandName}
         </p>
-        <p className="mt-1 text-[9px] text-navy-600">All rights reserved · Powered by Ziva AI</p>
+        <p className="mt-1 text-[9px] text-navy-600">All rights reserved Â· Powered by Ziva AI</p>
       </div>
     </div>
   )
 }
 
-// ─── Layout helpers ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Layout helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
