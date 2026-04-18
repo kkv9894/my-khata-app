@@ -397,9 +397,12 @@ export default function Settings({ language, setLanguage }: Props) {
               setNotifOn(value => !value)
               showToast(notifOn ? 'Notifications off' : 'Notifications on')
             }}
-            className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${notifOn ? 'bg-cyan' : 'bg-navy-600'}`}
+            className={`relative h-7 w-12 shrink-0 rounded-full px-1 transition-colors duration-200 ${notifOn ? 'bg-cyan' : 'bg-navy-600'}`}
+            aria-pressed={notifOn}
           >
-            <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${notifOn ? 'translate-x-5' : 'translate-x-1'}`} />
+            <span
+              className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-all duration-200 ${notifOn ? 'left-6' : 'left-1'}`}
+            />
           </button>
         </div>
       </Section>
