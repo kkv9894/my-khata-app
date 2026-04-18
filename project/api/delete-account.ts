@@ -51,11 +51,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    await deleteIfExists('transactions', 'user_id', userId)
+    await deleteIfExists('udhaar_transactions', 'user_id', userId)
+    await deleteIfExists('udhaar_customers', 'user_id', userId)
     await deleteIfExists('inventory', 'user_id', userId)
     await deleteIfExists('staff_access', 'staff_user_id', userId)
     await deleteIfExists('staff_access', 'owner_id', userId)
     await deleteIfExists('voice_logs', 'user_id', userId)
     await deleteIfExists('categories', 'user_id', userId)
+    await deleteIfExists('profiles', 'id', userId)
 
     const { error: deleteAuthError } = await admin.auth.admin.deleteUser(userId, false)
     if (deleteAuthError) {
